@@ -1,0 +1,52 @@
+# PHYLAX Blocks - build Trezor One (legacy) firmware from this fork.
+#
+# Put this file in your fork at:  .github/workflows/build-trezor-one.yml
+#
+# It runs when you push to the "phylax" branch, or when you press
+# "Run workflow" on the Actions tab. The finished firmware appears as a
+# downloadable zip at the bottom of the run's summary page.
+
+name: Build Trezor One firmware
+
+on:
+  push:
+    branches: [phylax]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Get the code from this fork
+        uses: actions/checkout@v5
+
+      - name: Build Bitcoin-only Trezor One firmware
+        # Trezor's own build script. It builds inside Docker from the
+        # code checked out above, at the branch this run is for.
+        #   --models T1B1  -> Trezor One only (skip newer models)
+        #   --skip-normal  -> Bitcoin-only firmware only (smaller, faster)
+        #
+        # The script's very last step (printing a "fingerprint" of the
+        # firmware) currently crashes on Trezor's main branch with
+        # "No module named 'slhdsa'". That happens AFTER firmware.bin is
+        # built, so we let it fail and then check that the firmware exists.
+        # A real compile error still fails this step, because then
+        # firmware.bin is missing.
+        run: |
+          bash build-docker.sh --models T1B1 --skip-normal "${{ github.ref_name }}" \
+            || echo "::warning::build-docker.sh exited with an error; checking whether the firmware was built anyway"
+          ls -l build/legacy-T1B1-bitcoinonly/firmware/ build/legacy-T1B1-bitcoinonly/bootloader/
+          test -f build/legacy-T1B1-bitcoinonly/firmware/firmware.bin
+          test -f build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
+          sha256sum build/legacy-T1B1-bitcoinonly/firmware/firmware.bin build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v5
+        with:
+          name: trezor-one-bitcoinonly-${{ github.ref_name }}-${{ github.sha }}
+          path: |
+            build/legacy-T1B1-bitcoinonly/firmware/
+            build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
+          if-no-files-found: error
