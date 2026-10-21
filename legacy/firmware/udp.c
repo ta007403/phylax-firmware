@@ -24,6 +24,7 @@
 
 #include "debug.h"
 #include "messages.h"
+#include "phylax_bus.h"
 #include "timer.h"
 
 static volatile char tiny = 0;
@@ -36,28 +37,69 @@ void usbInit(void) { emulatorSocketInit(); }
 #define _ISDBG ('n')
 #endif
 
+// PHYLAX: one 64-byte Trezor packet, from the USB host or (key block) from
+// the bus - both are handled exactly the same way.
+void usbDeliverPacket(const uint8_t *packet) {
+  if (!tiny) {
+    msg_read_common('n', packet, USB_PACKET_SIZE);
+  } else {
+    msg_read_tiny(packet, USB_PACKET_SIZE);
+  }
+}
+
+bool phylax_transport_send(uint8_t dst, const uint8_t *data, size_t len) {
+  return emulatorBusSend(dst, data, len) == len;
+}
+
+static void write_main_out(void) {
+  const uint8_t *data;
+  while ((data = msg_out_data()) != NULL) {
+    if (phylax_role() == PHYLAX_ROLE_KEY && phylax_reply_via_bus()) {
+      phylax_bus_send_reply_packet(data);  // answer the main block
+    } else {
+      emulatorSocketWrite(0, data, USB_PACKET_SIZE);
+    }
+  }
+}
+
+static void handle_input(int iface, uint8_t *buffer, size_t n) {
+  if (iface == 2) {
+    phylax_bus_rx(buffer, n);
+    return;
+  }
+  if (iface == 0) {
+    phylax_note_host_input();
+  }
+  if (!tiny) {
+    msg_read_common(_ISDBG, buffer, USB_PACKET_SIZE);
+  } else {
+    msg_read_tiny(buffer, USB_PACKET_SIZE);
+  }
+}
+
 void waitAndProcessUSBRequests(uint32_t millis) {
   emulatorPoll();
 
-  static uint8_t buffer[USB_PACKET_SIZE];
+  // Large enough for a whole bus frame; USB packets use the first 64 bytes.
+  static uint8_t buffer[PHYLAX_FRAME_MAX];
 
   int iface = 0;
-  if (emulatorSocketRead(&iface, buffer, sizeof(buffer), millis) > 0) {
+  size_t n = emulatorSocketRead(&iface, buffer, sizeof(buffer), millis);
+  if (n > 0) {
     if (!tiny) {
       do {
-        msg_read_common(_ISDBG, buffer, sizeof(buffer));
-      } while (emulatorSocketRead(&iface, buffer, sizeof(buffer), 0) > 0);
+        handle_input(iface, buffer, n);
+      } while ((n = emulatorSocketRead(&iface, buffer, sizeof(buffer), 0)) >
+               0);
     } else {
-      msg_read_tiny(buffer, sizeof(buffer));
+      handle_input(iface, buffer, n);
     }
   }
 
-  const uint8_t *data;
-  while ((data = msg_out_data()) != NULL) {
-    emulatorSocketWrite(0, data, USB_PACKET_SIZE);
-  }
+  write_main_out();
 
 #if DEBUG_LINK
+  const uint8_t *data;
   while ((data = msg_debug_out_data()) != NULL) {
     emulatorSocketWrite(1, data, USB_PACKET_SIZE);
   }
@@ -73,9 +115,6 @@ char usbTiny(char set) {
 }
 
 void usbFlush(uint32_t millis) {
-  const uint8_t *data;
-  while ((data = msg_out_data()) != NULL) {
-    emulatorSocketWrite(0, data, USB_PACKET_SIZE);
-  }
+  write_main_out();
   usleep(millis * 1000);
 }

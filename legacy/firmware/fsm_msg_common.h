@@ -101,6 +101,7 @@ bool get_features(Features *resp) {
 }
 
 void fsm_msgInitialize(const Initialize *msg) {
+  phylax_relay_reset();
   fsm_abortWorkflows();
 
   uint8_t *session_id;
@@ -357,6 +358,7 @@ void fsm_msgBackupDevice(const BackupDevice *msg) {
 }
 
 void fsm_msgCancel(const Cancel *msg) {
+  phylax_relay_reset();
   (void)msg;
   fsm_abortWorkflows();
   fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);

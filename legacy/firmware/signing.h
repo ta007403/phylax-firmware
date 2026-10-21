@@ -33,5 +33,7 @@ void signing_init(const SignTx *msg, const CoinInfo *_coin, const HDNode *_root,
 void signing_abort(void);
 void signing_txack(TransactionType *tx);
 bool signing_is_preauthorized(void);
+bool signing_get_last_request(RequestType *type, uint32_t *index,
+                              bool *for_prev_tx);
 
 #endif

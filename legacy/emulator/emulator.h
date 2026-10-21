@@ -32,6 +32,9 @@ void emulatorSocketInit(void);
 size_t emulatorSocketRead(int *iface, void *buffer, size_t size,
                           int timeout_ms);
 size_t emulatorSocketWrite(int iface, const void *buffer, size_t size);
+// PHYLAX: send raw bus-frame bytes to the block with bus address dst.
+// emulatorSocketRead returns them with iface == 2.
+size_t emulatorBusSend(unsigned char dst, const void *buffer, size_t size);
 
 #endif
 

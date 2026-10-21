@@ -45,6 +45,8 @@ OBJS += startup.o
 endif
 
 OBJS += messages.o
+OBJS += phylax_bus.o
+OBJS += phylax_relay.o
 OBJS += config.o
 OBJS += trezor.o
 OBJS += pinmatrix.o

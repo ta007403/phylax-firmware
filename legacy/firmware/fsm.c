@@ -40,6 +40,8 @@
 #include "messages.h"
 #include "messages.pb.h"
 #include "oled.h"
+#include "phylax_bus.h"
+#include "phylax_relay.h"
 #include "pinmatrix.h"
 #include "protect.h"
 #include "recovery.h"

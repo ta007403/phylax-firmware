@@ -18,6 +18,7 @@
  */
 
 #include "protect.h"
+#include "phylax_bus.h"
 #include "buttons.h"
 #include "config.h"
 #include "debug.h"
@@ -65,6 +66,14 @@ bool protectButton(ButtonRequestType type, bool confirm_only) {
     // button acked - check buttons
     if (acked) {
       waitAndProcessUSBRequests(5);
+#if EMULATOR
+      // PHYLAX key-block tests only: confirm prompts that came from the main
+      // block over the bus (nobody presses the emulated key block's buttons).
+      if (phylax_emu_autoconfirm() && phylax_reply_via_bus()) {
+        result = true;
+        break;
+      }
+#endif
       buttonUpdate();
       if (button.YesUp) {
         result = true;

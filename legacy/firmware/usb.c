@@ -24,6 +24,7 @@
 #include "config.h"
 #include "debug.h"
 #include "messages.h"
+#include "phylax_bus.h"
 #include "random_delays.h"
 #include "timer.h"
 #include "trezor.h"
@@ -476,4 +477,24 @@ void usbFlush(uint32_t millis) {
   while ((timer_ms() - start) < millis) {
     asm("nop");
   }
+}
+
+// PHYLAX: one 64-byte Trezor packet that arrived over the block bus is
+// handled exactly like one from the USB host.
+void usbDeliverPacket(const uint8_t *packet) {
+  if (!tiny) {
+    msg_read(packet, USB_PACKET_SIZE);
+  } else {
+    msg_read_tiny(packet, USB_PACKET_SIZE);
+  }
+}
+
+// PHYLAX: the RS485 (USART) transport is not written yet. Until then the
+// device has no bus, and phylax_role() is PHYLAX_ROLE_STOCK unless the
+// firmware is built with -DPHYLAX_ROLE=...
+bool phylax_transport_send(uint8_t dst, const uint8_t *data, size_t len) {
+  (void)dst;
+  (void)data;
+  (void)len;
+  return false;
 }

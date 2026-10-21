@@ -51,7 +51,15 @@ struct usb_socket {
 static struct usb_socket usb_main;
 static struct usb_socket usb_debug;
 
-static struct pollfd usb_fds[2];
+// PHYLAX: emulated block-to-block bus. Each block listens on UDP port
+// PHYLAX_BUS_PORT_BASE + its bus address; a datagram carries the raw bytes
+// of one bus frame, exactly as they would travel over RS485.
+#define PHYLAX_BUS_PORT_BASE 21500
+static struct usb_socket bus_sock;
+static int bus_enabled = 0;
+static int bus_port_base = PHYLAX_BUS_PORT_BASE;
+
+static struct pollfd usb_fds[3];
 
 static int socket_setup(int port) {
   int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -122,17 +130,55 @@ void emulatorSocketInit(void) {
   usb_debug.fromlen = 0;
   usb_fds[1].fd = usb_debug.fd;
   usb_fds[1].events = POLLIN;
+
+  const char *addr = getenv("PHYLAX_BUS_ADDR");
+  const char *role = getenv("PHYLAX_ROLE");
+  if ((addr != NULL && *addr != '\0') || (role != NULL && *role != '\0')) {
+    const char *base = getenv("PHYLAX_BUS_PORT_BASE");
+    if (base != NULL && *base != '\0') bus_port_base = atoi(base);
+    int my_addr = (addr != NULL && *addr != '\0')
+                      ? (int)strtol(addr, NULL, 0)
+                      : ((role != NULL && strcmp(role, "main") == 0) ? 0x01
+                                                                      : 0x10);
+    bus_sock.fd = socket_setup(bus_port_base + my_addr);
+    bus_sock.fromlen = 0;
+    usb_fds[2].fd = bus_sock.fd;
+    usb_fds[2].events = POLLIN;
+    bus_enabled = 1;
+    fprintf(stderr, "PHYLAX bus: address 0x%02x on UDP port %d\n", my_addr,
+            bus_port_base + my_addr);
+  }
+}
+
+size_t emulatorBusSend(unsigned char dst, const void *buffer, size_t size) {
+  if (!bus_enabled) return 0;
+  struct sockaddr_in to = {0};
+  to.sin_family = AF_INET;
+  to.sin_port = htons(bus_port_base + dst);
+  to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  ssize_t n = sendto(bus_sock.fd, buffer, size, MSG_DONTWAIT,
+                     (const struct sockaddr *)&to, sizeof(to));
+  if (n < 0 || ((size_t)n) != size) {
+    perror("PHYLAX bus: failed to send");
+    return 0;
+  }
+  return size;
 }
 
 size_t emulatorSocketRead(int *iface, void *buffer, size_t size,
                           int timeout_ms) {
-  if (poll(usb_fds, 2, timeout_ms) > 0) {
+  if (poll(usb_fds, bus_enabled ? 3 : 2, timeout_ms) > 0) {
     if (usb_fds[0].revents & POLLIN) {
       *iface = 0;
       return socket_read(&usb_main, buffer, size);
     } else if (usb_fds[1].revents & POLLIN) {
       *iface = 1;
       return socket_read(&usb_debug, buffer, size);
+    } else if (bus_enabled && (usb_fds[2].revents & POLLIN)) {
+      // Bus frames are raw bytes: no PING/PONG handling here.
+      *iface = 2;
+      ssize_t n = recv(bus_sock.fd, buffer, size, MSG_DONTWAIT);
+      return n > 0 ? (size_t)n : 0;
     }
   }
   return 0;

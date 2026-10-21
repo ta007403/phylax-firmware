@@ -220,9 +220,26 @@ enum {
   READSTATE_READING,
 };
 
+// PHYLAX: the encoded form of the message being processed, so the main block
+// can forward it to a key block unchanged.
+static uint16_t last_in_id = 0;
+static const uint8_t *last_in_data = NULL;
+static uint32_t last_in_size = 0;
+
+void msg_get_last_in(uint16_t *msg_id, const uint8_t **data, uint32_t *size) {
+  *msg_id = last_in_id;
+  *data = last_in_data;
+  *size = last_in_size;
+}
+
 void msg_process(char type, uint16_t msg_id, const pb_msgdesc_t *fields,
                  uint8_t *msg_encoded, uint32_t msg_encoded_size) {
   static uint8_t msg_decoded[MSG_IN_DECODED_SIZE] __attribute__((aligned(8)));
+  if (type == 'n') {
+    last_in_id = msg_id;
+    last_in_data = msg_encoded;
+    last_in_size = msg_encoded_size;
+  }
   memzero(msg_decoded, sizeof(msg_decoded));
   pb_istream_t stream = pb_istream_from_buffer(msg_encoded, msg_encoded_size);
   bool status = pb_decode(&stream, fields, msg_decoded);

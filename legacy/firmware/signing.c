@@ -4193,6 +4193,16 @@ void signing_abort(void) {
   memzero(&node, sizeof(node));
 }
 
+// PHYLAX: the request the host is currently answering.
+bool signing_get_last_request(RequestType *type, uint32_t *index,
+                              bool *for_prev_tx) {
+  if (!signing) return false;
+  *type = resp.request_type;
+  *index = resp.details.request_index;
+  *for_prev_tx = resp.details.has_tx_hash;
+  return true;
+}
+
 bool signing_is_preauthorized(void) {
   return signing && (is_coinjoin == sectrue);
 }
