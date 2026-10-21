@@ -374,4 +374,8 @@ enum MessageType {
     // PHYLAX Blocks (not part of upstream Trezor)
     MessageType_PhylaxGetBlocks = 7700 [(bitcoin_only) = true, (wire_in) = true];
     MessageType_PhylaxBlocks = 7701 [(bitcoin_only) = true, (wire_out) = true];
+    MessageType_PhylaxGetWallets = 7702 [(bitcoin_only) = true, (wire_in) = true];
+    MessageType_PhylaxWallets = 7703 [(bitcoin_only) = true, (wire_out) = true];
+    MessageType_PhylaxGetWallet = 7704 [(bitcoin_only) = true, (wire_in) = true];
+    MessageType_PhylaxWallet = 7705 [(bitcoin_only) = true, (wire_out) = true];
 }

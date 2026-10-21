@@ -29,6 +29,7 @@
 #include "layout2.h"
 #include "memzero.h"
 #include "oled.h"
+#include "phylax_wallet.h"
 #include "rng.h"
 #include "setup.h"
 #include "timer.h"
@@ -217,6 +218,7 @@ int main(void) {
     usbPoll();
 #endif
     check_lock_screen();
+    phylax_wallet_ui_poll();  // PHYLAX: "New wallet?" buttons
     check_busy_screen();
   }
 

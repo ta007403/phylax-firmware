@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../../legacy"
 headless="--headless"
 [ "${1:-}" = "--show" ] && headless=""
 failed=0
-for t in spike2a spike2b test_timeout test_discovery test_3of3; do
+for t in spike2a spike2b test_timeout test_discovery test_3of3 test_storage; do
   printf '%-16s ' "$t"
   if out=$(uv run --with embit python ../phylax/tests/$t.py $headless 2>&1); then
     echo "PASSED"

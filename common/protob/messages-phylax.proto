@@ -7,6 +7,7 @@ package hw.trezor.messages.phylax;
 option java_package = "com.satoshilabs.trezor.lib.protobuf";
 option java_outer_classname = "TrezorMessagePhylax";
 
+import "messages-common.proto";
 import "options.proto";
 
 option (include_in_bitcoin_only) = true;
@@ -50,4 +51,66 @@ message PhylaxGetBlocks {
  */
 message PhylaxBlocks {
     repeated PhylaxBlockInfo blocks = 1;
+}
+
+/**
+ * One key of a saved wallet: the block's seed fingerprint and its BIP48
+ * P2WSH account xpub (m/48'/coin'/0'/2') for mainnet and testnet.
+ */
+message PhylaxWalletKey {
+    required uint32 fingerprint = 1;                        // BIP32 master fingerprint
+    required hw.trezor.messages.common.HDNodeType mainnet = 2;  // m/48'/0'/0'/2'
+    required hw.trezor.messages.common.HDNodeType testnet = 3;  // m/48'/1'/0'/2'
+}
+
+/**
+ * A wallet saved in the storage block: wsh(sortedmulti(n, keys...)), n-of-n.
+ * Summary, without xpubs (see PhylaxGetWallet for those).
+ */
+message PhylaxWalletSummary {
+    required uint32 slot = 1;                   // 0..7 in the storage block
+    required string name = 2;                   // e.g. "2-of-2 #1"
+    required uint32 threshold = 3;              // m (= n for PHYLAX)
+    repeated uint32 fingerprints = 4;           // sorted
+    optional bool complete = 5;                 // every block is in the stack now
+}
+
+/**
+ * Request: Ask the main block for the wallets saved in the storage block
+ * @start
+ * @next PhylaxWallets
+ * @next Failure
+ */
+message PhylaxGetWallets {
+}
+
+/**
+ * Response: Saved wallets (empty if there is no storage block)
+ * @end
+ */
+message PhylaxWallets {
+    repeated PhylaxWalletSummary wallets = 1;
+    required bool storage_present = 2;          // a storage block is in the stack
+}
+
+/**
+ * Request: Ask the main block for one saved wallet, with its xpubs
+ * @start
+ * @next PhylaxWallet
+ * @next Failure
+ */
+message PhylaxGetWallet {
+    required uint32 slot = 1;
+}
+
+/**
+ * Response: One saved wallet, everything needed for its descriptor
+ * @end
+ */
+message PhylaxWallet {
+    required uint32 slot = 1;
+    required string name = 2;
+    required uint32 threshold = 3;
+    repeated PhylaxWalletKey keys = 4;          // sorted by fingerprint
+    optional bool complete = 5;
 }

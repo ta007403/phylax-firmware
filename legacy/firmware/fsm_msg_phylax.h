@@ -54,3 +54,71 @@ void fsm_msgPhylaxGetBlocks(const PhylaxGetBlocks *msg) {
   }
   msg_write(MessageType_MessageType_PhylaxBlocks, resp);
 }
+
+static void phylax_fill_xpub(HDNodeType *out, const PhylaxXpub *x) {
+  out->depth = 4;  // m/48'/coin'/0'/2'
+  out->fingerprint = x->parent_fingerprint;
+  out->child_num = x->child_num;
+  out->chain_code.size = 32;
+  memcpy(out->chain_code.bytes, x->chain_code, 32);
+  out->public_key.size = 33;
+  memcpy(out->public_key.bytes, x->public_key, 33);
+  out->has_private_key = false;
+}
+
+void fsm_msgPhylaxGetWallets(const PhylaxGetWallets *msg) {
+  (void)msg;
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+
+  RESP_INIT(PhylaxWallets);
+  resp->storage_present = phylax_wallet_storage_present();
+  const size_t max = sizeof(resp->wallets) / sizeof(resp->wallets[0]);
+  for (int slot = 0; slot < PHYLAX_WALLET_SLOTS && resp->wallets_count < max;
+       slot++) {
+    bool complete = false;
+    const PhylaxWalletRec *w = phylax_wallet_get(slot, &complete);
+    if (w == NULL) continue;
+    PhylaxWalletSummary *info = &resp->wallets[resp->wallets_count++];
+    info->slot = slot;
+    strlcpy(info->name, w->name, sizeof(info->name));
+    info->threshold = w->n;
+    info->has_complete = true;
+    info->complete = complete;
+    for (int k = 0; k < w->n; k++) {
+      info->fingerprints[info->fingerprints_count++] = w->keys[k].fingerprint;
+    }
+  }
+  msg_write(MessageType_MessageType_PhylaxWallets, resp);
+}
+
+void fsm_msgPhylaxGetWallet(const PhylaxGetWallet *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  bool complete = false;
+  const PhylaxWalletRec *w = phylax_wallet_get(msg->slot, &complete);
+  if (w == NULL) {
+    fsm_sendFailure(FailureType_Failure_DataError, _("No wallet in that slot"));
+    return;
+  }
+
+  RESP_INIT(PhylaxWallet);
+  resp->slot = msg->slot;
+  strlcpy(resp->name, w->name, sizeof(resp->name));
+  resp->threshold = w->n;
+  resp->has_complete = true;
+  resp->complete = complete;
+  for (int k = 0; k < w->n; k++) {
+    PhylaxWalletKey *out = &resp->keys[resp->keys_count++];
+    out->fingerprint = w->keys[k].fingerprint;
+    phylax_fill_xpub(&out->mainnet, &w->keys[k].mainnet);
+    phylax_fill_xpub(&out->testnet, &w->keys[k].testnet);
+  }
+  msg_write(MessageType_MessageType_PhylaxWallet, resp);
+}

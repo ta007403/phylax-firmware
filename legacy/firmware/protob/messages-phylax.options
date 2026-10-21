@@ -1,2 +1,7 @@
 PhylaxBlocks.blocks                     max_count:8
 PhylaxBlockInfo.unique_id               max_size:12
+PhylaxWallets.wallets                   max_count:8
+PhylaxWalletSummary.name                max_size:17
+PhylaxWalletSummary.fingerprints        max_count:3
+PhylaxWallet.name                       max_size:17
+PhylaxWallet.keys                       max_count:3

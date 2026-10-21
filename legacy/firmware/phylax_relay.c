@@ -51,6 +51,9 @@ uint8_t phylax_relay_target(void) {
 }
 
 void phylax_relay_reset(void) {
+  if (state != PHYLAX_RELAY_IDLE) {
+    phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
+  }
   state = PHYLAX_RELAY_IDLE;
   target_count = 0;
   current = 0;
@@ -78,6 +81,7 @@ static bool send_signtx(void) {
   pb_ostream_t stream = pb_ostream_from_buffer(buf, sizeof(buf));
   if (!pb_encode(&stream, SignTx_fields, &signtx)) return false;
   key_last_seen_ms = last_ping_ms = timer_ms();
+  phylax_bus_set_trezor_peer(target(), phylax_relay_on_key_message);
   show_waiting();
   return phylax_bus_send_trezor_msg(target(), MessageType_MessageType_SignTx,
                                     buf, stream.bytes_written);
@@ -114,6 +118,7 @@ static void next_key_block(void) {
     return;
   }
   state = PHYLAX_RELAY_PASS2;
+  phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
   fsm_phylaxStartOwnSigning();  // pass 2: the main block signs
 }
 

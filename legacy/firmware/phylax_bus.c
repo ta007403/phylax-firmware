@@ -18,6 +18,7 @@
 #include "memzero.h"
 #include "phylax_relay.h"
 #include "phylax_stack.h"
+#include "phylax_wallet.h"
 #include "timer.h"
 #include "usb.h"
 #include "version.h"
@@ -168,6 +169,7 @@ PhylaxRole phylax_role(void) {
     role = PHYLAX_ROLE_STOCK;
     if (v != NULL && strcmp(v, "main") == 0) role = PHYLAX_ROLE_MAIN;
     if (v != NULL && strcmp(v, "key") == 0) role = PHYLAX_ROLE_KEY;
+    if (v != NULL && strcmp(v, "storage") == 0) role = PHYLAX_ROLE_STORAGE;
   }
   return (PhylaxRole)role;
 #else
@@ -244,11 +246,13 @@ static bool my_fingerprint(const uint8_t uid[PHYLAX_UID_SIZE], uint32_t *fp) {
 void phylax_my_hello(PhylaxHello *h) {
   memzero(h, sizeof(*h));
   my_uid(h->uid);
-  h->kind = phylax_role() == PHYLAX_ROLE_MAIN ? PHYLAX_KIND_MAIN
-                                               : PHYLAX_KIND_KEY;
+  h->kind = phylax_role() == PHYLAX_ROLE_MAIN      ? PHYLAX_KIND_MAIN
+            : phylax_role() == PHYLAX_ROLE_STORAGE ? PHYLAX_KIND_STORAGE
+                                                   : PHYLAX_KIND_KEY;
   h->version[0] = VERSION_MAJOR;
   h->version[1] = VERSION_MINOR;
   h->version[2] = VERSION_PATCH;
+  if (phylax_role() == PHYLAX_ROLE_STORAGE) return;  // no seed by design
   if (!config_isInitialized()) return;
   h->flags |= PHYLAX_HELLO_INITIALIZED;
   if (!session_isUnlocked()) {
@@ -369,7 +373,10 @@ static void key_on_assign(const uint8_t *payload, uint16_t len) {
 
 // ------------------------------------------------------------ receiving
 
-// Main block: reassemble Trezor messages coming back from a key block.
+// Main block: reassemble Trezor messages coming back from the peer block.
+static uint8_t peer = PHYLAX_ADDR_NONE;
+static PhylaxTrezorHandler peer_handler = NULL;
+
 static struct {
   bool reading;
   uint16_t id;
@@ -385,8 +392,7 @@ static void main_rx_trezor_packet(const uint8_t *p) {
     rx_msg.size = ((uint32_t)p[5] << 24) | ((uint32_t)p[6] << 16) |
                   ((uint32_t)p[7] << 8) | p[8];
     if (rx_msg.size > sizeof(rx_msg.data)) {
-      phylax_relay_on_key_error("Key block message too big");
-      return;
+      return;  // too big: dropped, the conversation will time out
     }
     uint32_t chunk = rx_msg.size < USB_PACKET_SIZE - 9
                          ? rx_msg.size
@@ -407,9 +413,19 @@ static void main_rx_trezor_packet(const uint8_t *p) {
   }
   if (rx_msg.pos >= rx_msg.size) {
     rx_msg.reading = false;
-    phylax_relay_on_key_message(rx_msg.id, rx_msg.data, rx_msg.size);
+    if (peer_handler != NULL) {
+      peer_handler(rx_msg.id, rx_msg.data, rx_msg.size);
+    }
   }
 }
+
+void phylax_bus_set_trezor_peer(uint8_t addr, PhylaxTrezorHandler handler) {
+  peer = addr;
+  peer_handler = addr == PHYLAX_ADDR_NONE ? NULL : handler;
+  rx_msg.reading = false;
+}
+
+uint8_t phylax_bus_trezor_peer(void) { return peer; }
 
 static void main_on_frame(const PhylaxFrame *f) {
   // Any frame counts as a sign of life.
@@ -426,16 +442,22 @@ static void main_on_frame(const PhylaxFrame *f) {
       break;
     }
     case PHYLAX_MSG_TREZOR:
-      if (f->len == USB_PACKET_SIZE && f->src == phylax_relay_target()) {
+      if (f->len == USB_PACKET_SIZE && f->src != PHYLAX_ADDR_NONE &&
+          f->src == peer) {
         main_rx_trezor_packet(f->payload);
       }
+      break;
+    case PHYLAX_MSG_STORE_DATA:
+    case PHYLAX_MSG_STORE_ACK:
+      phylax_wallet_on_store_reply(f);
       break;
     default:
       break;
   }
 }
 
-static void key_on_frame(const PhylaxFrame *f) {
+// Key and storage blocks.
+static void block_on_frame(const PhylaxFrame *f) {
   switch (f->type) {
     case PHYLAX_MSG_DISCOVER:
       key_on_discover();
@@ -443,8 +465,17 @@ static void key_on_frame(const PhylaxFrame *f) {
     case PHYLAX_MSG_ASSIGN:
       key_on_assign(f->payload, f->len);
       break;
+    case PHYLAX_MSG_STORE_GET:
+    case PHYLAX_MSG_STORE_PUT:
+      if (phylax_role() == PHYLAX_ROLE_STORAGE && my_addr != PHYLAX_ADDR_NONE) {
+        phylax_storage_on_request(f);
+      }
+      break;
     case PHYLAX_MSG_TREZOR:
-      if (f->len != USB_PACKET_SIZE || my_addr == PHYLAX_ADDR_NONE) break;
+      if (phylax_role() != PHYLAX_ROLE_KEY || f->len != USB_PACKET_SIZE ||
+          my_addr == PHYLAX_ADDR_NONE) {
+        break;
+      }
       reply_via_bus = true;
       reply_to = f->src;
       usbDeliverPacket(f->payload);
@@ -468,8 +499,8 @@ static void on_frame(const PhylaxFrame *f) {
 
   if (phylax_role() == PHYLAX_ROLE_MAIN) {
     main_on_frame(f);
-  } else if (phylax_role() == PHYLAX_ROLE_KEY) {
-    key_on_frame(f);
+  } else if (phylax_role() != PHYLAX_ROLE_STOCK) {
+    block_on_frame(f);
   }
 }
 
@@ -492,8 +523,10 @@ void phylax_poll(void) {
     case PHYLAX_ROLE_MAIN:
       phylax_stack_poll();
       phylax_relay_poll();
+      phylax_wallet_poll();
       break;
     case PHYLAX_ROLE_KEY:
+    case PHYLAX_ROLE_STORAGE:
       if (hello_pending && (int32_t)(timer_ms() - hello_at_ms) >= 0) {
         hello_pending = false;
         key_send_hello();

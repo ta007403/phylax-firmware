@@ -14,6 +14,7 @@ real savings on it.**
 | stock | (default) | Plain Trezor One behaviour, bus unused |
 | main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to each key block in turn (pass 1), then signs itself, placing each key block's signature in the slot whose key verifies it (pass 2) |
 | key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus |
+| storage | `PHYLAX_ROLE=storage` | No seed; keeps up to 8 wallet records in flash, read and written over the bus in chunks of at most 128 bytes |
 
 On real hardware the role is chosen at build time with `-DPHYLAX_ROLE=1`
 (main) or `2` (key). The RS485 transport is not written yet, so device
@@ -50,6 +51,33 @@ If no key block answers for 10 s during signing, the main block cancels with
 "Key block disconnected". With no key block in the stack, SignTx fails at
 once with "No key block attached".
 
+## Saved wallets (storage block)
+
+A wallet is `wsh(sortedmulti(n, ...))`, n-of-n, one key per block with seed.
+The storage block keeps each wallet's name, fingerprints and BIP48 account
+xpubs (`m/48'/0'/0'/2'` and `m/48'/1'/0'/2'`) as a 473-byte record at most,
+under public, writable Trezor storage keys (no secrets in it, no PIN
+needed). Records travel over the bus in chunks of at most 128 bytes.
+
+When a storage block is in the stack, the main block loads all records and
+compares them with the seed fingerprints present:
+
+- the blocks match a saved wallet: "*2-of-2 #1* is ready."
+- a new combination of 2 or 3 blocks: "New 2-of-2 wallet?" with the
+  fingerprints; on **Create** (right button) it fetches the key blocks'
+  xpubs over the bus and saves the record; **No** is remembered until the
+  blocks change
+- a saved wallet is missing one block: "Attach key block 777dfe5d to use
+  wallet *3-of-3 #1*"
+
+The PC reads the list with `PhylaxGetWallets` (fingerprints only) and one
+wallet with its xpubs with `PhylaxGetWallet` (enough to build the
+descriptor). Without a storage block everything still works; there are just
+no saved wallets and no prompts.
+
+In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
+"Create" automatically (tests only).
+
 ## Tests
 
 Build the emulator first (`EMULATOR=1 DEBUG_LINK=1 BITCOIN_ONLY=1`), then
@@ -62,6 +90,7 @@ uv run --with embit python ../phylax/tests/spike2b.py   # main block relays to a
 uv run --with embit python ../phylax/tests/test_timeout.py    # 10 s timeout, slow user, no key block
 uv run --with embit python ../phylax/tests/test_discovery.py  # blocks snapped on and off, fingerprints
 uv run --with embit python ../phylax/tests/test_3of3.py       # 3-of-3, and a stranger key block skipped
+uv run --with embit python ../phylax/tests/test_storage.py    # wallets saved, read back, 2-of-2 then 3-of-3
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

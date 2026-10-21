@@ -48,8 +48,10 @@ typedef enum {
   PHYLAX_MSG_PONG = 0x05,
   PHYLAX_MSG_TREZOR = 0x10,  // payload: one 64-byte Trezor USB packet
   PHYLAX_MSG_BUSY = 0x11,
-  PHYLAX_MSG_STORE_GET = 0x20,
-  PHYLAX_MSG_STORE_PUT = 0x21,
+  PHYLAX_MSG_STORE_GET = 0x20,   // main -> storage: slot, offset(2), len
+  PHYLAX_MSG_STORE_PUT = 0x21,   // main -> storage: slot, offset(2), total(2), data
+  PHYLAX_MSG_STORE_DATA = 0x22,  // storage -> main: slot, offset(2), status, data
+  PHYLAX_MSG_STORE_ACK = 0x23,   // storage -> main: slot, offset(2), status
   PHYLAX_MSG_ERROR = 0x7F,
 } PhylaxMsgType;
 
@@ -72,6 +74,7 @@ typedef enum {
   PHYLAX_ROLE_STOCK = 0,  // plain Trezor One behaviour, bus unused
   PHYLAX_ROLE_MAIN = 1,   // top block: USB to the PC, bus master
   PHYLAX_ROLE_KEY = 2,    // key block: answers Trezor messages over the bus
+  PHYLAX_ROLE_STORAGE = 3,  // storage block: keeps wallet records, no seed
 } PhylaxRole;
 
 typedef struct {
@@ -130,6 +133,14 @@ bool phylax_bus_send(uint8_t dst, uint8_t type, const uint8_t *payload,
 // cut into 64-byte Trezor USB packets, one packet per frame.
 bool phylax_bus_send_trezor_msg(uint8_t dst, uint16_t msg_id,
                                 const uint8_t *data, uint32_t len);
+
+// --- main block: one Trezor-protocol conversation with one block ---
+// Trezor messages arriving from `addr` are reassembled and given to
+// `handler`. PHYLAX_ADDR_NONE ends the conversation.
+typedef void (*PhylaxTrezorHandler)(uint16_t msg_id, const uint8_t *data,
+                                    uint32_t len);
+void phylax_bus_set_trezor_peer(uint8_t addr, PhylaxTrezorHandler handler);
+uint8_t phylax_bus_trezor_peer(void);
 
 // --- key block: route its replies back over the bus ---
 bool phylax_reply_via_bus(void);

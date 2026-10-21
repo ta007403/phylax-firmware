@@ -81,3 +81,96 @@ class PhylaxBlocks(protobuf.MessageType):
 
 for _cls in (PhylaxGetBlocks, PhylaxBlocks):
     mapping.DEFAULT_MAPPING.register(_cls)
+
+
+# --- saved wallets (storage block) -------------------------------------
+
+from trezorlib.messages import HDNodeType  # noqa: E402  (used by field types)
+
+
+class PhylaxWalletSummary(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = None
+    FIELDS = {
+        1: protobuf.Field("slot", "uint32", repeated=False, required=True),
+        2: protobuf.Field("name", "string", repeated=False, required=True),
+        3: protobuf.Field("threshold", "uint32", repeated=False, required=True),
+        4: protobuf.Field("fingerprints", "uint32", repeated=True, required=False, default=None),
+        5: protobuf.Field("complete", "bool", repeated=False, required=False, default=None),
+    }
+
+    def __init__(self, *, slot: int, name: str, threshold: int,
+                 fingerprints: Optional[Sequence[int]] = None,
+                 complete: Optional[bool] = None) -> None:
+        self.slot = slot
+        self.name = name
+        self.threshold = threshold
+        self.fingerprints: Sequence[int] = fingerprints if fingerprints is not None else []
+        self.complete = complete
+
+    def describe(self) -> str:
+        fps = " ".join(f"{f:08x}" for f in self.fingerprints)
+        state = "ready" if self.complete else "block missing"
+        return f"slot {self.slot}: {self.name:<10} {self.threshold}-of-{len(self.fingerprints)}  {fps}  ({state})"
+
+
+class PhylaxGetWallets(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7702
+
+
+class PhylaxWallets(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7703
+    FIELDS = {
+        1: protobuf.Field("wallets", "PhylaxWalletSummary", repeated=True, required=False, default=None),
+        2: protobuf.Field("storage_present", "bool", repeated=False, required=True),
+    }
+
+    def __init__(self, *, storage_present: bool,
+                 wallets: Optional[Sequence[PhylaxWalletSummary]] = None) -> None:
+        self.wallets: Sequence[PhylaxWalletSummary] = wallets if wallets is not None else []
+        self.storage_present = storage_present
+
+
+class PhylaxWalletKey(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = None
+    FIELDS = {
+        1: protobuf.Field("fingerprint", "uint32", repeated=False, required=True),
+        2: protobuf.Field("mainnet", "HDNodeType", repeated=False, required=True),
+        3: protobuf.Field("testnet", "HDNodeType", repeated=False, required=True),
+    }
+
+    def __init__(self, *, fingerprint: int, mainnet: HDNodeType, testnet: HDNodeType) -> None:
+        self.fingerprint = fingerprint
+        self.mainnet = mainnet
+        self.testnet = testnet
+
+
+class PhylaxGetWallet(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7704
+    FIELDS = {1: protobuf.Field("slot", "uint32", repeated=False, required=True)}
+
+    def __init__(self, *, slot: int) -> None:
+        self.slot = slot
+
+
+class PhylaxWallet(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7705
+    FIELDS = {
+        1: protobuf.Field("slot", "uint32", repeated=False, required=True),
+        2: protobuf.Field("name", "string", repeated=False, required=True),
+        3: protobuf.Field("threshold", "uint32", repeated=False, required=True),
+        4: protobuf.Field("keys", "PhylaxWalletKey", repeated=True, required=False, default=None),
+        5: protobuf.Field("complete", "bool", repeated=False, required=False, default=None),
+    }
+
+    def __init__(self, *, slot: int, name: str, threshold: int,
+                 keys: Optional[Sequence[PhylaxWalletKey]] = None,
+                 complete: Optional[bool] = None) -> None:
+        self.slot = slot
+        self.name = name
+        self.threshold = threshold
+        self.keys: Sequence[PhylaxWalletKey] = keys if keys is not None else []
+        self.complete = complete
+
+
+for _cls in (PhylaxGetWallets, PhylaxWallets, PhylaxGetWallet, PhylaxWallet):
+    mapping.DEFAULT_MAPPING.register(_cls)
