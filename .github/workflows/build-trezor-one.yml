@@ -43,7 +43,7 @@ jobs:
           sha256sum build/legacy-T1B1-bitcoinonly/firmware/firmware.bin build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
 
       - name: Upload firmware
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: trezor-one-bitcoinonly-${{ github.ref_name }}-${{ github.sha }}
           path: |
