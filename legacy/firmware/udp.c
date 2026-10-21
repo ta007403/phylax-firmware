@@ -25,6 +25,7 @@
 #include "debug.h"
 #include "messages.h"
 #include "phylax_bus.h"
+#include "phylax_relay.h"
 #include "timer.h"
 
 static volatile char tiny = 0;
@@ -94,6 +95,10 @@ void waitAndProcessUSBRequests(uint32_t millis) {
     } else {
       handle_input(iface, buffer, n);
     }
+  }
+
+  if (phylax_role() == PHYLAX_ROLE_MAIN) {
+    phylax_relay_poll();
   }
 
   write_main_out();

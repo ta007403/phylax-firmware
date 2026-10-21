@@ -27,6 +27,14 @@
 #define PHYLAX_MAX_INPUTS 16
 #define PHYLAX_MAX_SIG 73
 
+// A key block that sends nothing for this long is treated as removed. While
+// it waits for its user's button press its bus layer still answers PINGs,
+// so slow users never hit this.
+#ifndef PHYLAX_KEY_TIMEOUT_MS
+#define PHYLAX_KEY_TIMEOUT_MS 10000
+#endif
+#define PHYLAX_PING_INTERVAL_MS 1000
+
 typedef enum {
   PHYLAX_RELAY_IDLE = 0,
   PHYLAX_RELAY_PASS1,  // key block is signing, main block relays
@@ -44,6 +52,12 @@ bool phylax_relay_begin(void);
 // Called by fsm_msgTxAck. Returns true if the TxAck was forwarded to the key
 // block (pass 1) and must not be processed locally.
 bool phylax_relay_forward_txack(void);
+
+// Called often from the main loop: keeps the key block alive with PINGs and
+// cancels signing if it has been silent for PHYLAX_KEY_TIMEOUT_MS.
+void phylax_relay_poll(void);
+// The bus layer saw a frame from the key block.
+void phylax_relay_note_key_alive(void);
 
 // The key block's signature for input `index`, or NULL.
 const uint8_t *phylax_relay_key_sig(uint32_t index, size_t *len);

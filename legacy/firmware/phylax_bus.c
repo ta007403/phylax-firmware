@@ -296,10 +296,18 @@ static void on_frame(const PhylaxFrame *f) {
   uint8_t me = phylax_my_addr();
   if (f->dst != me && f->dst != PHYLAX_ADDR_BROADCAST) return;
 
+  if (phylax_role() == PHYLAX_ROLE_MAIN && f->src == phylax_key_addr()) {
+    phylax_relay_note_key_alive();  // any frame (PONG, TREZOR, ...) counts
+  }
+
   switch (f->type) {
     case PHYLAX_MSG_PING:
+      // Answered here, below the Trezor message layer, so a key block that
+      // is waiting for a button press still answers.
       phylax_bus_send(f->src, PHYLAX_MSG_PONG, f->payload, f->len);
       break;
+    case PHYLAX_MSG_PONG:
+      break;  // liveness already noted above
     case PHYLAX_MSG_TREZOR:
       if (f->len != USB_PACKET_SIZE) break;
       if (phylax_role() == PHYLAX_ROLE_KEY) {

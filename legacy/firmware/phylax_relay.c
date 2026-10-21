@@ -20,10 +20,13 @@
 #include "messages.pb.h"
 #include "pb_decode.h"
 #include "phylax_bus.h"
+#include "timer.h"
 
 static PhylaxRelayState state = PHYLAX_RELAY_IDLE;
 static uint8_t key_sig[PHYLAX_MAX_INPUTS][PHYLAX_MAX_SIG];
 static uint8_t key_sig_len[PHYLAX_MAX_INPUTS];
+static uint32_t key_last_seen_ms = 0;
+static uint32_t last_ping_ms = 0;
 
 PhylaxRelayState phylax_relay_state(void) { return state; }
 
@@ -53,8 +56,28 @@ bool phylax_relay_begin(void) {
     return false;
   }
   state = PHYLAX_RELAY_PASS1;
+  key_last_seen_ms = last_ping_ms = timer_ms();
   show_waiting();
   return true;
+}
+
+void phylax_relay_note_key_alive(void) { key_last_seen_ms = timer_ms(); }
+
+void phylax_relay_poll(void) {
+  if (state != PHYLAX_RELAY_PASS1) return;
+  uint32_t now = timer_ms();
+  if (now - key_last_seen_ms >= PHYLAX_KEY_TIMEOUT_MS) {
+    // Best effort: if the block comes back, it should not keep signing.
+    phylax_bus_send_trezor_msg(phylax_key_addr(),
+                               MessageType_MessageType_Cancel, NULL, 0);
+    phylax_relay_on_key_error(_("Key block disconnected"));
+    return;
+  }
+  if (now - key_last_seen_ms >= PHYLAX_PING_INTERVAL_MS &&
+      now - last_ping_ms >= PHYLAX_PING_INTERVAL_MS) {
+    last_ping_ms = now;
+    phylax_bus_send(phylax_key_addr(), PHYLAX_MSG_PING, NULL, 0);
+  }
 }
 
 bool phylax_relay_forward_txack(void) {

@@ -25,6 +25,7 @@
 #include "debug.h"
 #include "messages.h"
 #include "phylax_bus.h"
+#include "phylax_relay.h"
 #include "random_delays.h"
 #include "timer.h"
 #include "trezor.h"
@@ -404,6 +405,10 @@ void usbInit(void) {
 void usbPoll(void) {
   if (usbd_dev == NULL) {
     return;
+  }
+
+  if (phylax_role() == PHYLAX_ROLE_MAIN) {
+    phylax_relay_poll();
   }
 
   static const uint8_t *data;
