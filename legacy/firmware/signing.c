@@ -18,6 +18,7 @@
  */
 
 #include "signing.h"
+#include "phylax_relay.h"
 #include "config.h"
 #include "crypto.h"
 #include "ecdsa.h"
@@ -3174,6 +3175,8 @@ static bool signing_sign_ecdsa(TxInputType *txinput, const uint8_t *private_key,
            resp.serialized.signature.bytes, resp.serialized.signature.size);
     txinput->multisig.signatures[pubkey_idx].size =
         resp.serialized.signature.size;
+    // PHYLAX main block (pass 2): add the key blocks' signatures.
+    phylax_relay_fill_signatures(coin, &(txinput->multisig), idx1, hash);
     txinput->script_sig.size = serialize_script_multisig(
         coin, &(txinput->multisig), sighash, txinput->script_sig.bytes);
     if (txinput->script_sig.size == 0) {

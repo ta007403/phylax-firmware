@@ -221,44 +221,6 @@ void fsm_phylaxStartOwnSigning(void) {
   signing_init(&phylax_signtx, phylax_coin, node, NULL, phylax_unlock);
 }
 
-// PHYLAX pass 2: give the host's input the key block's signature, in the
-// multisig slot that is not the main block's own key.
-static void phylax_inject_key_signature(TxAck *msg) {
-  RequestType type;
-  uint32_t index = 0;
-  bool for_prev_tx = true;
-  if (phylax_relay_state() != PHYLAX_RELAY_PASS2 || phylax_coin == NULL ||
-      !signing_get_last_request(&type, &index, &for_prev_tx) ||
-      type != RequestType_TXINPUT || for_prev_tx ||
-      msg->tx.inputs_count != 1 || !msg->tx.inputs[0].has_multisig) {
-    return;
-  }
-  size_t sig_len = 0;
-  const uint8_t *sig = phylax_relay_key_sig(index, &sig_len);
-  if (sig == NULL) return;
-
-  TxInputType *in = &msg->tx.inputs[0];
-  MultisigRedeemScriptType *ms = &in->multisig;
-  HDNode *node = fsm_getDerivedNode(phylax_coin->curve_name, in->address_n,
-                                    in->address_n_count, NULL);
-  if (!node || hdnode_fill_public_key(node) != 0) return;
-  int own = cryptoMultisigPubkeyIndex(phylax_coin, ms, node->public_key);
-  uint32_t count = cryptoMultisigPubkeyCount(ms);
-  if (own < 0 || count > sizeof(ms->signatures) / sizeof(ms->signatures[0])) {
-    return;
-  }
-  while (ms->signatures_count < count) {
-    ms->signatures[ms->signatures_count++].size = 0;
-  }
-  for (uint32_t i = 0; i < count; i++) {
-    if ((int)i != own && ms->signatures[i].size == 0) {
-      memcpy(ms->signatures[i].bytes, sig, sig_len);
-      ms->signatures[i].size = sig_len;
-      return;
-    }
-  }
-}
-
 void fsm_msgSignTx(const SignTx *msg) {
   CHECK_INITIALIZED
 
@@ -294,11 +256,11 @@ void fsm_msgSignTx(const SignTx *msg) {
   if (!node) return;
 
   if (phylax_role() == PHYLAX_ROLE_MAIN && authorization == NULL) {
-    // Pass 1: the key block signs first; this block relays.
+    // Pass 1: the key blocks sign first; this block relays.
     memcpy(&phylax_signtx, msg, sizeof(SignTx));
     phylax_coin = coin;
     phylax_unlock = unlock;
-    if (!phylax_relay_begin()) {
+    if (!phylax_relay_begin(msg)) {
       fsm_sendFailure(FailureType_Failure_ProcessError,
                       _("No key block attached"));
       layoutHome();
@@ -316,11 +278,8 @@ void fsm_msgTxAck(TxAck *msg) {
 
   CHECK_PARAM(msg->has_tx, _("No transaction provided"));
 
-  if (phylax_role() == PHYLAX_ROLE_MAIN) {
-    if (phylax_relay_forward_txack()) {
-      return;  // pass 1: this TxAck is for the key block
-    }
-    phylax_inject_key_signature(msg);  // pass 2
+  if (phylax_role() == PHYLAX_ROLE_MAIN && phylax_relay_forward_txack()) {
+    return;  // pass 1: this TxAck is for a key block
   }
 
   signing_txack(&(msg->tx));

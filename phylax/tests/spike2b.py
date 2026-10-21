@@ -171,10 +171,11 @@ def build_multisig(nodes, path):
     ms = messages.MultisigRedeemScriptType(
         pubkeys=[messages.HDNodePathType(node=nodes[n], address_n=path) for n in order],
         signatures=[b"" for _ in order],  # the host sends NO signatures
-        m=2,
+        m=len(order),  # n-of-n
     )
     keys = [child_pubkey(nodes[n], path) for n in order]
-    ws = b"\x52" + b"".join(b"\x21" + k for k in keys) + b"\x52\xae"
+    op_n = bytes([0x50 + len(order)])  # OP_2, OP_3, ...
+    ws = op_n + b"".join(b"\x21" + k for k in keys) + op_n + b"\xae"
     return ms, ws, order
 
 
