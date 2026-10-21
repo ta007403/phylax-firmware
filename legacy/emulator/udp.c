@@ -27,6 +27,21 @@
 
 #define TREZOR_UDP_PORT 21324
 
+// PHYLAX: the port can be changed with the TREZOR_UDP_PORT environment
+// variable, so several emulated blocks can run side by side. DebugLink uses
+// the next port up, as before.
+static int udp_port(void) {
+  const char *env = getenv("TREZOR_UDP_PORT");
+  if (env != NULL && *env != '\0') {
+    int port = atoi(env);
+    if (port > 0 && port < 65535) {
+      return port;
+    }
+    fprintf(stderr, "Ignoring invalid TREZOR_UDP_PORT=%s\n", env);
+  }
+  return TREZOR_UDP_PORT;
+}
+
 struct usb_socket {
   int fd;
   struct sockaddr_in from;
@@ -97,12 +112,13 @@ static size_t socket_read(struct usb_socket *sock, void *buffer, size_t size) {
 }
 
 void emulatorSocketInit(void) {
-  usb_main.fd = socket_setup(TREZOR_UDP_PORT);
+  int port = udp_port();
+  usb_main.fd = socket_setup(port);
   usb_main.fromlen = 0;
   usb_fds[0].fd = usb_main.fd;
   usb_fds[0].events = POLLIN;
 
-  usb_debug.fd = socket_setup(TREZOR_UDP_PORT + 1);
+  usb_debug.fd = socket_setup(port + 1);
   usb_debug.fromlen = 0;
   usb_fds[1].fd = usb_debug.fd;
   usb_fds[1].events = POLLIN;
