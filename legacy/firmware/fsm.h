@@ -27,6 +27,7 @@
 #include "messages-ethereum.pb.h"
 #include "messages-management.pb.h"
 #include "messages-nem.pb.h"
+#include "messages-phylax.pb.h"
 #include "messages-stellar.pb.h"
 #include "messages.pb.h"
 
@@ -54,6 +55,9 @@ void fsm_sendFailure(FailureType code, const char *text);
 // common
 void fsm_msgInitialize(const Initialize *msg);
 void fsm_msgGetFeatures(const GetFeatures *msg);
+
+// PHYLAX
+void fsm_msgPhylaxGetBlocks(const PhylaxGetBlocks *msg);
 void fsm_msgPing(const Ping *msg);
 void fsm_msgChangePin(const ChangePin *msg);
 void fsm_msgChangeWipeCode(const ChangeWipeCode *msg);

@@ -12,8 +12,8 @@ real savings on it.**
 | Role | Emulator | What it does |
 | --- | --- | --- |
 | stock | (default) | Plain Trezor One behaviour, bus unused |
-| main | `PHYLAX_ROLE=main` | USB to the PC; relays SignTx to a key block (pass 1), then signs with its signature inserted (pass 2) |
-| key | `PHYLAX_ROLE=key` | Answers Trezor messages that arrive over the bus |
+| main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to a key block (pass 1), then signs with its signature inserted (pass 2) |
+| key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus |
 
 On real hardware the role is chosen at build time with `-DPHYLAX_ROLE=1`
 (main) or `2` (key). The RS485 transport is not written yet, so device
@@ -25,10 +25,26 @@ builds behave as stock for now.
 | --- | --- | --- |
 | `TREZOR_UDP_PORT` | 21324 | Host port; DebugLink is port + 1 |
 | `PHYLAX_ROLE` | (none) | `main` or `key` |
-| `PHYLAX_BUS_ADDR` | 0x01 main, 0x10 key | This block's bus address |
-| `PHYLAX_KEY_ADDR` | 0x10 | Key block the main block relays to |
-| `PHYLAX_BUS_PORT_BASE` | 21500 | Bus UDP port = base + bus address |
+| `PHYLAX_BUS_NODE` | 0 main, 1 key | Slot 0..7 on the emulated shared bus; must be unique |
+| `PHYLAX_BUS_PORT_BASE` | 21500 | Bus UDP port = base + node; every frame goes to all nodes |
 | `PHYLAX_EMU_AUTOCONFIRM` | off | `1`: confirm prompts that come over the bus (tests only) |
+
+Bus addresses are not configured: the main block is always 0x01 and hands
+key blocks 0x10, 0x11, ... during discovery.
+
+## Discovery
+
+Every 2 s the main block broadcasts DISCOVER. Each block answers HELLO with
+its 12-byte id, its kind, whether it has a seed or is locked, its seed's
+BIP32 master fingerprint (no passphrase) and its firmware version. New blocks
+get the next free address; a block silent for 6.5 s is removed. The PC can
+ask for the current stack with `PhylaxGetBlocks` (message 7700, answer
+`PhylaxBlocks` 7701, see `common/protob/messages-phylax.proto`;
+`phylax/tests/phylax_msgs.py` registers them with trezorlib).
+
+If no key block answers for 10 s during signing, the main block cancels with
+"Key block disconnected". With no key block in the stack, SignTx fails at
+once with "No key block attached".
 
 ## Tests
 
@@ -38,6 +54,8 @@ from `legacy/`:
 ```
 uv run --with embit python ../phylax/tests/spike2a.py   # signature hand-over, stock firmware
 uv run --with embit python ../phylax/tests/spike2b.py   # main block relays to a key block over the bus
+uv run --with embit python ../phylax/tests/test_timeout.py    # 10 s timeout, slow user, no key block
+uv run --with embit python ../phylax/tests/test_discovery.py  # blocks snapped on and off, fingerprints
 ```
 
 Add `--headless` to run without emulator windows.

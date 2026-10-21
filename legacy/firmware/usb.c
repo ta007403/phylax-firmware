@@ -407,9 +407,7 @@ void usbPoll(void) {
     return;
   }
 
-  if (phylax_role() == PHYLAX_ROLE_MAIN) {
-    phylax_relay_poll();
-  }
+  phylax_poll();
 
   static const uint8_t *data;
   // poll read buffer
@@ -497,8 +495,7 @@ void usbDeliverPacket(const uint8_t *packet) {
 // PHYLAX: the RS485 (USART) transport is not written yet. Until then the
 // device has no bus, and phylax_role() is PHYLAX_ROLE_STOCK unless the
 // firmware is built with -DPHYLAX_ROLE=...
-bool phylax_transport_send(uint8_t dst, const uint8_t *data, size_t len) {
-  (void)dst;
+bool phylax_transport_send(const uint8_t *data, size_t len) {
   (void)data;
   (void)len;
   return false;

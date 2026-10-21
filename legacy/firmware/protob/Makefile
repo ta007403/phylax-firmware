@@ -25,7 +25,7 @@ endif
 
 PROTO_NAMES = messages messages-bitcoin messages-common messages-crypto messages-debug \
 	messages-ethereum messages-definitions messages-management messages-nem \
-	messages-stellar options
+	messages-stellar messages-phylax options
 
 PROTO_OPTIONS = $(PROTO_NAMES:=.options)
 PROTO_COMPILED = $(PROTO_NAMES:=.pb)

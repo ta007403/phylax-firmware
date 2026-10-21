@@ -8,8 +8,8 @@ PINGs, so after 15 s the main block must still be waiting.
 Scenario B, block pulled out: key block 2 is killed while waiting. The main
 block must give up with "Key block disconnected" about 10 s later.
 
-Scenario C, no key block at all: SignTx fails with "Key block disconnected"
-after about 10 s instead of hanging forever.
+Scenario C, no key block at all: SignTx fails at once with "No key block
+attached" instead of hanging forever.
 
 Run from the legacy folder (emulator built with
 EMULATOR=1 DEBUG_LINK=1 BITCOIN_ONLY=1):
@@ -113,6 +113,8 @@ def main():
         print("Scenarios A and B: key block waits for a button press, then is pulled out")
         key.start()
         main_blk.start()
+        s.wait_for_blocks(main_blk.session, lambda bl: len(s.key_blocks(bl)) == 1,
+                          what="the key block to be discovered")
         nodes = {b.name: btc.get_public_node(b.session, parse_path(s.ACCOUNT),
                                              coin_name=s.COIN).node
                  for b in (main_blk, key)}
@@ -144,8 +146,10 @@ def main():
         main_c.start()
         t, result = sign_in_thread(main_c.session, inputs, outputs, prev)
         t.join(timeout=TIMEOUT_S + 10)
-        check(is_disconnected(result.get("outcome")),
-              f"C: failed after {result.get('seconds', 0):.1f} s with \"Key block disconnected\"",
+        outcome = result.get("outcome") or ""
+        check(outcome.startswith("failure:") and outcome.endswith("No key block attached")
+              and result.get("seconds", 99) < 2,
+              f"C: failed at once ({result.get('seconds', 0):.1f} s) with \"No key block attached\"",
               f"C: unexpected outcome: {result}")
         main_c.stop()
 

@@ -1,0 +1,53 @@
+syntax = "proto2";
+package hw.trezor.messages.phylax;
+
+// PHYLAX Blocks: snap-together multisig built on Trezor One firmware.
+// Not part of upstream Trezor.
+
+option java_package = "com.satoshilabs.trezor.lib.protobuf";
+option java_outer_classname = "TrezorMessagePhylax";
+
+import "options.proto";
+
+option (include_in_bitcoin_only) = true;
+
+/**
+ * Kind of block found on the PHYLAX bus.
+ */
+enum PhylaxBlockKind {
+    PHYLAX_BLOCK_MAIN = 0;      // top block, USB to the PC
+    PHYLAX_BLOCK_KEY = 1;       // holds one seed, signs
+    PHYLAX_BLOCK_STORAGE = 2;   // holds wallet descriptors, no seed
+}
+
+/**
+ * One block in the stack, as seen by the main block.
+ */
+message PhylaxBlockInfo {
+    required uint32 address = 1;            // bus address (main block = 1)
+    required PhylaxBlockKind kind = 2;
+    required bytes unique_id = 3;           // 12 bytes, stable until the block is wiped
+    optional uint32 fingerprint = 4;        // BIP32 master key fingerprint of its seed (no passphrase)
+    optional bool initialized = 5;          // has a seed
+    optional bool locked = 6;               // PIN not entered: fingerprint unknown
+    optional uint32 major_version = 7;
+    optional uint32 minor_version = 8;
+    optional uint32 patch_version = 9;
+}
+
+/**
+ * Request: Ask the main block which blocks are in the stack
+ * @start
+ * @next PhylaxBlocks
+ * @next Failure
+ */
+message PhylaxGetBlocks {
+}
+
+/**
+ * Response: The blocks the main block currently sees, itself first
+ * @end
+ */
+message PhylaxBlocks {
+    repeated PhylaxBlockInfo blocks = 1;
+}

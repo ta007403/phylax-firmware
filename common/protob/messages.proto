@@ -370,4 +370,8 @@ enum MessageType {
     // Telemetry
     MessageType_TelemetryGet = 1100 [(bitcoin_only) = true, (wire_in) = true];
     MessageType_Telemetry = 1101 [(bitcoin_only) = true, (wire_out) = true];
+
+    // PHYLAX Blocks (not part of upstream Trezor)
+    MessageType_PhylaxGetBlocks = 7700 [(bitcoin_only) = true, (wire_in) = true];
+    MessageType_PhylaxBlocks = 7701 [(bitcoin_only) = true, (wire_out) = true];
 }

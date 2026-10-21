@@ -42,11 +42,13 @@ typedef enum {
 } PhylaxRelayState;
 
 PhylaxRelayState phylax_relay_state(void);
+// Bus address of the key block being relayed to (pass 1), else ADDR_NONE.
+uint8_t phylax_relay_target(void);
 void phylax_relay_reset(void);
 
 // Called by fsm_msgSignTx on the main block. Forwards the SignTx the host
-// just sent to the key block. Returns false if the key block can't be
-// reached (then the caller reports the failure).
+// just sent to the first key block found by discovery. Returns false if
+// there is no key block (then the caller reports the failure).
 bool phylax_relay_begin(void);
 
 // Called by fsm_msgTxAck. Returns true if the TxAck was forwarded to the key

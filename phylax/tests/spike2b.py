@@ -40,6 +40,8 @@ import tempfile
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from embit.bip32 import HDKey
 from embit.ec import PublicKey, Signature
 from embit.networks import NETWORKS
@@ -80,10 +82,15 @@ def port_answers(port: int) -> bool:
 
 
 class Block:
-    def __init__(self, name, seed, port, role, elf, workdir, headless, autoconfirm):
+    """One emulated block. `node` is its slot on the emulated shared bus
+    (0 = main block); `seed=None` leaves it without a seed."""
+
+    def __init__(self, name, seed, port, role, elf, workdir, headless, autoconfirm,
+                 node=None):
         self.name, self.seed, self.port, self.role = name, seed, port, role
         self.elf, self.headless, self.autoconfirm = elf, headless, autoconfirm
-        self.dir = workdir / role
+        self.node = node if node is not None else (0 if role == "main" else 1)
+        self.dir = workdir / f"{role}{self.node}"
         self.dir.mkdir(parents=True, exist_ok=True)
 
     def start(self):
@@ -91,6 +98,7 @@ class Block:
         env.setdefault("TREZOR_OLED_SCALE", "3")
         env["TREZOR_UDP_PORT"] = str(self.port)
         env["PHYLAX_ROLE"] = self.role
+        env["PHYLAX_BUS_NODE"] = str(self.node)
         if self.autoconfirm:
             env["PHYLAX_EMU_AUTOCONFIRM"] = "1"
         if self.headless:
@@ -108,10 +116,12 @@ class Block:
             sys.exit(f"[{self.name}] emulator did not start")
         self.ctx = TrezorTestContext(get_transport(f"udp:127.0.0.1:{self.port}"))
         seedless = self.ctx.get_session(passphrase=None)
-        load_device(seedless, mnemonic=self.seed, pin=None,
-                    passphrase_protection=False, label=self.name)
+        if self.seed is not None and not seedless.features.initialized:
+            load_device(seedless, mnemonic=self.seed, pin=None,
+                        passphrase_protection=False, label=self.name)
         seedless.close()
-        self.session = self.ctx.get_session(passphrase="")
+        if self.seed is not None:
+            self.session = self.ctx.get_session(passphrase="")
         return self
 
     def stop(self):
@@ -121,6 +131,29 @@ class Block:
                 self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+
+
+def get_blocks(session):
+    """Ask the main block which blocks are in the stack (PhylaxGetBlocks)."""
+    import phylax_msgs as pm
+    return session.call(pm.PhylaxGetBlocks(), expect=pm.PhylaxBlocks).blocks
+
+
+def wait_for_blocks(session, condition, timeout=10.0, what="blocks"):
+    """Poll PhylaxGetBlocks until condition(blocks) is true."""
+    deadline = time.time() + timeout
+    blocks = []
+    while time.time() < deadline:
+        blocks = get_blocks(session)
+        if condition(blocks):
+            return blocks
+        time.sleep(0.25)
+    raise TimeoutError(f"waited {timeout:.0f} s for {what}; main block sees: "
+                       + "; ".join(b.describe() for b in blocks))
+
+
+def key_blocks(blocks):
+    return [b for b in blocks if int(b.kind) == 1]
 
 
 def sha256d(b):
@@ -191,6 +224,8 @@ def main():
         print("Step 1  Start key block 2 and the main block (both running)")
         key.start()
         main_blk.start()
+        wait_for_blocks(main_blk.session, lambda bl: len(key_blocks(bl)) == 1,
+                        what="the key block to be discovered")
         nodes = {
             b.name: btc.get_public_node(b.session, parse_path(ACCOUNT), coin_name=COIN).node
             for b in (main_blk, key)

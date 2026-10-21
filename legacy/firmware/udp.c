@@ -48,8 +48,8 @@ void usbDeliverPacket(const uint8_t *packet) {
   }
 }
 
-bool phylax_transport_send(uint8_t dst, const uint8_t *data, size_t len) {
-  return emulatorBusSend(dst, data, len) == len;
+bool phylax_transport_send(const uint8_t *data, size_t len) {
+  return emulatorBusBroadcast(data, len) == len;
 }
 
 static void write_main_out(void) {
@@ -97,9 +97,7 @@ void waitAndProcessUSBRequests(uint32_t millis) {
     }
   }
 
-  if (phylax_role() == PHYLAX_ROLE_MAIN) {
-    phylax_relay_poll();
-  }
+  phylax_poll();
 
   write_main_out();
 

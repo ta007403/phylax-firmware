@@ -11,8 +11,16 @@
 
 #include <string.h>
 
+#include "bip32.h"
+#include "bip39.h"
+#include "config.h"
+#include "curves.h"
+#include "memzero.h"
 #include "phylax_relay.h"
+#include "phylax_stack.h"
+#include "timer.h"
 #include "usb.h"
+#include "version.h"
 
 #if EMULATOR
 #include <stdlib.h>
@@ -127,15 +135,30 @@ bool phylax_decoder_feed(PhylaxDecoder *dec, uint8_t byte) {
   return false;
 }
 
-// ------------------------------------------------------------ this block
-
-#if EMULATOR
-static uint8_t env_byte(const char *name, uint8_t fallback) {
-  const char *v = getenv(name);
-  if (v == NULL || *v == '\0') return fallback;
-  return (uint8_t)strtol(v, NULL, 0);
+size_t phylax_hello_encode(const PhylaxHello *h, uint8_t *out) {
+  memcpy(out, h->uid, PHYLAX_UID_SIZE);
+  out[12] = h->kind;
+  out[13] = h->flags;
+  out[14] = h->fingerprint & 0xFF;
+  out[15] = (h->fingerprint >> 8) & 0xFF;
+  out[16] = (h->fingerprint >> 16) & 0xFF;
+  out[17] = (h->fingerprint >> 24) & 0xFF;
+  memcpy(out + 18, h->version, 3);
+  return PHYLAX_HELLO_SIZE;
 }
-#endif
+
+bool phylax_hello_decode(const uint8_t *in, size_t len, PhylaxHello *h) {
+  if (len < PHYLAX_HELLO_SIZE) return false;
+  memcpy(h->uid, in, PHYLAX_UID_SIZE);
+  h->kind = in[12];
+  h->flags = in[13];
+  h->fingerprint = (uint32_t)in[14] | ((uint32_t)in[15] << 8) |
+                   ((uint32_t)in[16] << 16) | ((uint32_t)in[17] << 24);
+  memcpy(h->version, in + 18, 3);
+  return true;
+}
+
+// ------------------------------------------------------------ this block
 
 PhylaxRole phylax_role(void) {
 #if EMULATOR
@@ -152,23 +175,89 @@ PhylaxRole phylax_role(void) {
 #endif
 }
 
+// Key blocks start without an address; the main block assigns one.
+static uint8_t my_addr = PHYLAX_ADDR_NONE;
+
 uint8_t phylax_my_addr(void) {
+  if (phylax_role() == PHYLAX_ROLE_MAIN) return PHYLAX_ADDR_MAIN;
+  return my_addr;
+}
+
+static uint8_t hex_nibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return 0;
+}
+
+static void my_uid(uint8_t uid[PHYLAX_UID_SIZE]) {
+  // The device id Trezor already keeps (Features.device_id): random from the
+  // hardware RNG, stored in flash, renewed when the block is wiped.
+  for (int i = 0; i < PHYLAX_UID_SIZE; i++) {
+    uid[i] = (hex_nibble(config_uuid_str[2 * i]) << 4) |
+             hex_nibble(config_uuid_str[2 * i + 1]);
+  }
 #if EMULATOR
-  return env_byte("PHYLAX_BUS_ADDR", phylax_role() == PHYLAX_ROLE_MAIN
-                                         ? PHYLAX_ADDR_MAIN
-                                         : PHYLAX_ADDR_KEY_FIRST);
-#else
-  return phylax_role() == PHYLAX_ROLE_MAIN ? PHYLAX_ADDR_MAIN
-                                           : PHYLAX_ADDR_KEY_FIRST;
+  // The emulator's RNG is deterministic, so every emulator would get the same
+  // id. Mix in the bus node number to tell them apart.
+  const char *node = getenv("PHYLAX_BUS_NODE");
+  if (node != NULL) uid[PHYLAX_UID_SIZE - 1] ^= (uint8_t)atoi(node);
 #endif
 }
 
-uint8_t phylax_key_addr(void) {
-#if EMULATOR
-  return env_byte("PHYLAX_KEY_ADDR", PHYLAX_ADDR_KEY_FIRST);
-#else
-  return PHYLAX_ADDR_KEY_FIRST;
-#endif
+// Seed fingerprint, cached per device id (a wipe gives a new id).
+static struct {
+  bool valid;
+  uint8_t uid[PHYLAX_UID_SIZE];
+  uint32_t fingerprint;
+} fp_cache;
+
+static bool my_fingerprint(const uint8_t uid[PHYLAX_UID_SIZE], uint32_t *fp) {
+  if (fp_cache.valid && memcmp(fp_cache.uid, uid, PHYLAX_UID_SIZE) == 0) {
+    *fp = fp_cache.fingerprint;
+    return true;
+  }
+  // Derived straight from the mnemonic with an empty passphrase, so it never
+  // prompts the user. Slow the first time on real hardware (PBKDF2), then
+  // cached.
+  static char mnemonic[MAX_MNEMONIC_LEN + 1];
+  static uint8_t seed[64];
+  static HDNode node;
+  bool ok = false;
+  if (config_getMnemonic(mnemonic, sizeof(mnemonic))) {
+    mnemonic_to_seed(mnemonic, "", seed, NULL);
+    if (hdnode_from_seed(seed, sizeof(seed), SECP256K1_NAME, &node) == 1) {
+      hdnode_fill_public_key(&node);
+      fp_cache.fingerprint = hdnode_fingerprint(&node);
+      memcpy(fp_cache.uid, uid, PHYLAX_UID_SIZE);
+      fp_cache.valid = true;
+      *fp = fp_cache.fingerprint;
+      ok = true;
+    }
+  }
+  memzero(mnemonic, sizeof(mnemonic));
+  memzero(seed, sizeof(seed));
+  memzero(&node, sizeof(node));
+  return ok;
+}
+
+void phylax_my_hello(PhylaxHello *h) {
+  memzero(h, sizeof(*h));
+  my_uid(h->uid);
+  h->kind = phylax_role() == PHYLAX_ROLE_MAIN ? PHYLAX_KIND_MAIN
+                                               : PHYLAX_KIND_KEY;
+  h->version[0] = VERSION_MAJOR;
+  h->version[1] = VERSION_MINOR;
+  h->version[2] = VERSION_PATCH;
+  if (!config_isInitialized()) return;
+  h->flags |= PHYLAX_HELLO_INITIALIZED;
+  if (!session_isUnlocked()) {
+    h->flags |= PHYLAX_HELLO_LOCKED;
+    return;
+  }
+  if (my_fingerprint(h->uid, &h->fingerprint)) {
+    h->flags |= PHYLAX_HELLO_HAS_FP;
+  }
 }
 
 #if EMULATOR
@@ -199,7 +288,7 @@ bool phylax_bus_send(uint8_t dst, uint8_t type, const uint8_t *payload,
   f.len = len;
   if (len) memcpy(f.payload, payload, len);
   size_t n = phylax_frame_encode(&f, wire, sizeof(wire));
-  return n > 0 && phylax_transport_send(dst, wire, n);
+  return n > 0 && phylax_transport_send(wire, n);
 }
 
 bool phylax_bus_send_trezor_msg(uint8_t dst, uint16_t msg_id,
@@ -248,6 +337,36 @@ void phylax_bus_send_reply_packet(const uint8_t *packet) {
   phylax_bus_send(reply_to, PHYLAX_MSG_TREZOR, packet, USB_PACKET_SIZE);
 }
 
+// HELLO is sent after a short delay picked from the block's id, so blocks
+// that hear the same DISCOVER do not all answer at the same moment.
+#define HELLO_SLOT_MS 3
+static bool hello_pending = false;
+static uint32_t hello_at_ms = 0;
+
+static void key_on_discover(void) {
+  uint8_t uid[PHYLAX_UID_SIZE];
+  my_uid(uid);
+  hello_pending = true;
+  hello_at_ms = timer_ms() + (uid[PHYLAX_UID_SIZE - 1] % 16) * HELLO_SLOT_MS;
+}
+
+static void key_send_hello(void) {
+  PhylaxHello h;
+  uint8_t payload[PHYLAX_HELLO_SIZE];
+  phylax_my_hello(&h);
+  phylax_hello_encode(&h, payload);
+  phylax_bus_send(PHYLAX_ADDR_MAIN, PHYLAX_MSG_HELLO, payload,
+                  sizeof(payload));
+}
+
+static void key_on_assign(const uint8_t *payload, uint16_t len) {
+  if (len < PHYLAX_UID_SIZE + 1) return;
+  uint8_t uid[PHYLAX_UID_SIZE];
+  my_uid(uid);
+  if (memcmp(uid, payload, PHYLAX_UID_SIZE) != 0) return;  // someone else
+  my_addr = payload[PHYLAX_UID_SIZE];
+}
+
 // ------------------------------------------------------------ receiving
 
 // Main block: reassemble Trezor messages coming back from a key block.
@@ -292,34 +411,65 @@ static void main_rx_trezor_packet(const uint8_t *p) {
   }
 }
 
-static void on_frame(const PhylaxFrame *f) {
-  uint8_t me = phylax_my_addr();
-  if (f->dst != me && f->dst != PHYLAX_ADDR_BROADCAST) return;
-
-  if (phylax_role() == PHYLAX_ROLE_MAIN && f->src == phylax_key_addr()) {
-    phylax_relay_note_key_alive();  // any frame (PONG, TREZOR, ...) counts
+static void main_on_frame(const PhylaxFrame *f) {
+  // Any frame counts as a sign of life.
+  phylax_stack_note_seen(f->src);
+  if (f->src != PHYLAX_ADDR_NONE && f->src == phylax_relay_target()) {
+    phylax_relay_note_key_alive();
   }
-
   switch (f->type) {
-    case PHYLAX_MSG_PING:
-      // Answered here, below the Trezor message layer, so a key block that
-      // is waiting for a button press still answers.
-      phylax_bus_send(f->src, PHYLAX_MSG_PONG, f->payload, f->len);
+    case PHYLAX_MSG_HELLO: {
+      PhylaxHello h;
+      if (phylax_hello_decode(f->payload, f->len, &h)) {
+        phylax_stack_on_hello(f->src, &h);
+      }
       break;
-    case PHYLAX_MSG_PONG:
-      break;  // liveness already noted above
+    }
     case PHYLAX_MSG_TREZOR:
-      if (f->len != USB_PACKET_SIZE) break;
-      if (phylax_role() == PHYLAX_ROLE_KEY) {
-        reply_via_bus = true;
-        reply_to = f->src;
-        usbDeliverPacket(f->payload);
-      } else if (phylax_role() == PHYLAX_ROLE_MAIN) {
+      if (f->len == USB_PACKET_SIZE && f->src == phylax_relay_target()) {
         main_rx_trezor_packet(f->payload);
       }
       break;
     default:
-      break;  // discovery, storage, ... come later
+      break;
+  }
+}
+
+static void key_on_frame(const PhylaxFrame *f) {
+  switch (f->type) {
+    case PHYLAX_MSG_DISCOVER:
+      key_on_discover();
+      break;
+    case PHYLAX_MSG_ASSIGN:
+      key_on_assign(f->payload, f->len);
+      break;
+    case PHYLAX_MSG_TREZOR:
+      if (f->len != USB_PACKET_SIZE || my_addr == PHYLAX_ADDR_NONE) break;
+      reply_via_bus = true;
+      reply_to = f->src;
+      usbDeliverPacket(f->payload);
+      break;
+    default:
+      break;
+  }
+}
+
+static void on_frame(const PhylaxFrame *f) {
+  uint8_t me = phylax_my_addr();
+  bool for_me = f->dst == PHYLAX_ADDR_BROADCAST ||
+                (me != PHYLAX_ADDR_NONE && f->dst == me);
+  if (!for_me) return;
+
+  if (f->type == PHYLAX_MSG_PING) {
+    // Answered here, below the Trezor message layer, so a key block that is
+    // waiting for a button press still answers.
+    phylax_bus_send(f->src, PHYLAX_MSG_PONG, f->payload, f->len);
+  }
+
+  if (phylax_role() == PHYLAX_ROLE_MAIN) {
+    main_on_frame(f);
+  } else if (phylax_role() == PHYLAX_ROLE_KEY) {
+    key_on_frame(f);
   }
 }
 
@@ -334,5 +484,22 @@ void phylax_bus_rx(const uint8_t *data, size_t len) {
     if (phylax_decoder_feed(&dec, data[i])) {
       on_frame(&dec.frame);
     }
+  }
+}
+
+void phylax_poll(void) {
+  switch (phylax_role()) {
+    case PHYLAX_ROLE_MAIN:
+      phylax_stack_poll();
+      phylax_relay_poll();
+      break;
+    case PHYLAX_ROLE_KEY:
+      if (hello_pending && (int32_t)(timer_ms() - hello_at_ms) >= 0) {
+        hello_pending = false;
+        key_send_hello();
+      }
+      break;
+    default:
+      break;
   }
 }

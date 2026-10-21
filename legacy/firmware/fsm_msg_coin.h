@@ -300,7 +300,7 @@ void fsm_msgSignTx(const SignTx *msg) {
     phylax_unlock = unlock;
     if (!phylax_relay_begin()) {
       fsm_sendFailure(FailureType_Failure_ProcessError,
-                      _("Key block not connected"));
+                      _("No key block attached"));
       layoutHome();
     }
     return;

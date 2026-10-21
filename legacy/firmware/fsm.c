@@ -42,6 +42,7 @@
 #include "oled.h"
 #include "phylax_bus.h"
 #include "phylax_relay.h"
+#include "phylax_stack.h"
 #include "pinmatrix.h"
 #include "protect.h"
 #include "recovery.h"
@@ -492,6 +493,7 @@ bool fsm_layoutDifferentPathsWarning(void) {
 #include "fsm_msg_common.h"
 #include "fsm_msg_crypto.h"
 #include "fsm_msg_debug.h"
+#include "fsm_msg_phylax.h"
 
 #if !BITCOIN_ONLY
 

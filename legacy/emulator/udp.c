@@ -51,13 +51,16 @@ struct usb_socket {
 static struct usb_socket usb_main;
 static struct usb_socket usb_debug;
 
-// PHYLAX: emulated block-to-block bus. Each block listens on UDP port
-// PHYLAX_BUS_PORT_BASE + its bus address; a datagram carries the raw bytes
-// of one bus frame, exactly as they would travel over RS485.
+// PHYLAX: emulated block-to-block bus, a shared medium like RS485. Every
+// emulator is a "node" listening on UDP port PHYLAX_BUS_PORT_BASE + node, and
+// every frame is sent to all other nodes; the bus address inside the frame
+// decides who acts on it, exactly as on the real wire.
 #define PHYLAX_BUS_PORT_BASE 21500
+#define PHYLAX_BUS_NODES 8
 static struct usb_socket bus_sock;
 static int bus_enabled = 0;
 static int bus_port_base = PHYLAX_BUS_PORT_BASE;
+static int bus_node = 0;
 
 static struct pollfd usb_fds[3];
 
@@ -131,36 +134,39 @@ void emulatorSocketInit(void) {
   usb_fds[1].fd = usb_debug.fd;
   usb_fds[1].events = POLLIN;
 
-  const char *addr = getenv("PHYLAX_BUS_ADDR");
   const char *role = getenv("PHYLAX_ROLE");
-  if ((addr != NULL && *addr != '\0') || (role != NULL && *role != '\0')) {
+  if (role != NULL && *role != '\0') {
     const char *base = getenv("PHYLAX_BUS_PORT_BASE");
     if (base != NULL && *base != '\0') bus_port_base = atoi(base);
-    int my_addr = (addr != NULL && *addr != '\0')
-                      ? (int)strtol(addr, NULL, 0)
-                      : ((role != NULL && strcmp(role, "main") == 0) ? 0x01
-                                                                      : 0x10);
-    bus_sock.fd = socket_setup(bus_port_base + my_addr);
+    const char *node = getenv("PHYLAX_BUS_NODE");
+    bus_node = (node != NULL && *node != '\0') ? atoi(node)
+               : (strcmp(role, "main") == 0)    ? 0
+                                                : 1;
+    if (bus_node < 0 || bus_node >= PHYLAX_BUS_NODES) {
+      fprintf(stderr, "PHYLAX_BUS_NODE must be 0..%d\n", PHYLAX_BUS_NODES - 1);
+      exit(1);
+    }
+    bus_sock.fd = socket_setup(bus_port_base + bus_node);
     bus_sock.fromlen = 0;
     usb_fds[2].fd = bus_sock.fd;
     usb_fds[2].events = POLLIN;
     bus_enabled = 1;
-    fprintf(stderr, "PHYLAX bus: address 0x%02x on UDP port %d\n", my_addr,
-            bus_port_base + my_addr);
+    fprintf(stderr, "PHYLAX bus: node %d on UDP port %d\n", bus_node,
+            bus_port_base + bus_node);
   }
 }
 
-size_t emulatorBusSend(unsigned char dst, const void *buffer, size_t size) {
+size_t emulatorBusBroadcast(const void *buffer, size_t size) {
   if (!bus_enabled) return 0;
-  struct sockaddr_in to = {0};
-  to.sin_family = AF_INET;
-  to.sin_port = htons(bus_port_base + dst);
-  to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  ssize_t n = sendto(bus_sock.fd, buffer, size, MSG_DONTWAIT,
-                     (const struct sockaddr *)&to, sizeof(to));
-  if (n < 0 || ((size_t)n) != size) {
-    perror("PHYLAX bus: failed to send");
-    return 0;
+  for (int node = 0; node < PHYLAX_BUS_NODES; node++) {
+    if (node == bus_node) continue;
+    struct sockaddr_in to = {0};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(bus_port_base + node);
+    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    // Nodes that are not running simply drop it, like an empty bus slot.
+    sendto(bus_sock.fd, buffer, size, MSG_DONTWAIT,
+           (const struct sockaddr *)&to, sizeof(to));
   }
   return size;
 }

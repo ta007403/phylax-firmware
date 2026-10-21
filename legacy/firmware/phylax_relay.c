@@ -20,15 +20,21 @@
 #include "messages.pb.h"
 #include "pb_decode.h"
 #include "phylax_bus.h"
+#include "phylax_stack.h"
 #include "timer.h"
 
 static PhylaxRelayState state = PHYLAX_RELAY_IDLE;
 static uint8_t key_sig[PHYLAX_MAX_INPUTS][PHYLAX_MAX_SIG];
 static uint8_t key_sig_len[PHYLAX_MAX_INPUTS];
+static uint8_t target = PHYLAX_ADDR_NONE;  // key block being relayed to
 static uint32_t key_last_seen_ms = 0;
 static uint32_t last_ping_ms = 0;
 
 PhylaxRelayState phylax_relay_state(void) { return state; }
+
+uint8_t phylax_relay_target(void) {
+  return state == PHYLAX_RELAY_PASS1 ? target : PHYLAX_ADDR_NONE;
+}
 
 void phylax_relay_reset(void) {
   state = PHYLAX_RELAY_IDLE;
@@ -41,7 +47,7 @@ static bool forward_last_host_message(void) {
   const uint8_t *data = NULL;
   uint32_t len = 0;
   msg_get_last_in(&id, &data, &len);
-  return phylax_bus_send_trezor_msg(phylax_key_addr(), id, data, len);
+  return phylax_bus_send_trezor_msg(target, id, data, len);
 }
 
 static void show_waiting(void) {
@@ -52,7 +58,8 @@ static void show_waiting(void) {
 
 bool phylax_relay_begin(void) {
   phylax_relay_reset();
-  if (!forward_last_host_message()) {
+  target = phylax_stack_first_key();
+  if (target == PHYLAX_ADDR_NONE || !forward_last_host_message()) {
     return false;
   }
   state = PHYLAX_RELAY_PASS1;
@@ -68,15 +75,15 @@ void phylax_relay_poll(void) {
   uint32_t now = timer_ms();
   if (now - key_last_seen_ms >= PHYLAX_KEY_TIMEOUT_MS) {
     // Best effort: if the block comes back, it should not keep signing.
-    phylax_bus_send_trezor_msg(phylax_key_addr(),
-                               MessageType_MessageType_Cancel, NULL, 0);
+    phylax_bus_send_trezor_msg(target, MessageType_MessageType_Cancel, NULL,
+                               0);
     phylax_relay_on_key_error(_("Key block disconnected"));
     return;
   }
   if (now - key_last_seen_ms >= PHYLAX_PING_INTERVAL_MS &&
       now - last_ping_ms >= PHYLAX_PING_INTERVAL_MS) {
     last_ping_ms = now;
-    phylax_bus_send(phylax_key_addr(), PHYLAX_MSG_PING, NULL, 0);
+    phylax_bus_send(target, PHYLAX_MSG_PING, NULL, 0);
   }
 }
 
@@ -103,8 +110,8 @@ void phylax_relay_on_key_error(const char *text) {
 
 static void send_button_ack(void) {
   // ButtonAck has no fields: an empty body.
-  phylax_bus_send_trezor_msg(phylax_key_addr(),
-                             MessageType_MessageType_ButtonAck, NULL, 0);
+  phylax_bus_send_trezor_msg(target, MessageType_MessageType_ButtonAck, NULL,
+                             0);
 }
 
 void phylax_relay_on_key_message(uint16_t msg_id, const uint8_t *data,

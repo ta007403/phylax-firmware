@@ -47,6 +47,7 @@ endif
 OBJS += messages.o
 OBJS += phylax_bus.o
 OBJS += phylax_relay.o
+OBJS += phylax_stack.o
 OBJS += config.o
 OBJS += trezor.o
 OBJS += pinmatrix.o
@@ -145,6 +146,7 @@ OBJS += protob/messages-common.pb.o
 OBJS += protob/messages-crypto.pb.o
 OBJS += protob/messages-debug.pb.o
 OBJS += protob/messages-management.pb.o
+OBJS += protob/messages-phylax.pb.o
 
 ifneq ($(BITCOIN_ONLY),1)
 OBJS += ../vendor/trezor-crypto/cash_addr.o
