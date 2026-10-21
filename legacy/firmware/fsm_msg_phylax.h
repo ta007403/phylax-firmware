@@ -75,7 +75,7 @@ void fsm_msgPhylaxGetWallets(const PhylaxGetWallets *msg) {
   }
 
   RESP_INIT(PhylaxWallets);
-  resp->storage_present = phylax_wallet_storage_present();
+  resp->storage_present = phylax_wallet_ready();
   const size_t max = sizeof(resp->wallets) / sizeof(resp->wallets[0]);
   for (int slot = 0; slot < PHYLAX_WALLET_SLOTS && resp->wallets_count < max;
        slot++) {

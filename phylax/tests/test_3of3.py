@@ -109,13 +109,18 @@ def main():
                 args.headless, autoconfirm=True, node=2)
     ok = False
     try:
-        for blk in (a, b, main_blk):
+        # Key blocks' xpubs are read before the main block exists (see spike2b).
+        nodes = {}
+        for blk in (a, b):
             blk.start()
+            nodes[blk.name] = btc.get_public_node(blk.session, parse_path(s.ACCOUNT),
+                                                  coin_name=s.COIN).node
+        main_blk.start()
         s.wait_for_blocks(main_blk.session, lambda bl: len(s.key_blocks(bl)) == 2,
                           what="both key blocks")
-        nodes = {blk.name: btc.get_public_node(blk.session, parse_path(s.ACCOUNT),
-                                               coin_name=s.COIN).node
-                 for blk in (main_blk, a, b)}
+        nodes[main_blk.name] = btc.get_public_node(main_blk.session, parse_path(s.ACCOUNT),
+                                                   coin_name=s.COIN).node
+        nodes = {k: nodes[k] for k in (main_blk.name, a.name, b.name)}
 
         print("Part 1: 3-of-3, one SignTx to the main block")
         sign_and_verify(main_blk.session, nodes, "3-of-3")

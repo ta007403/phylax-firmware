@@ -1,19 +1,22 @@
 /*
- * PHYLAX Blocks - wallets saved in the storage block.
+ * PHYLAX Blocks - saved wallets, a copy on every block.
  *
  * A wallet is wsh(sortedmulti(n, ...)), n-of-n, one key per block (main block
- * included). The storage block keeps up to PHYLAX_WALLET_SLOTS records in its
- * flash; nothing in them is secret (fingerprints and xpubs).
+ * included). Every block keeps up to PHYLAX_WALLET_SLOTS records in its own
+ * flash, the same on all blocks; nothing in them is secret (fingerprints and
+ * xpubs). A wallet's identity is its set of fingerprints; when copies
+ * disagree, the higher generation wins.
  *
- * The main block loads all records when a storage block appears, compares
- * the seed fingerprints in the stack with them, and:
+ * The main block reads the copy of every block that joins the stack, merges
+ * it with its own, writes the result back wherever a copy is missing or
+ * older, compares the seed fingerprints in the stack with the wallets, and:
  *   - shows "<name> ready" when a saved wallet's blocks are all present,
  *   - shows "Attach key block <fp>" when a saved wallet misses one block,
  *   - asks "New n-of-n wallet?" for a new combination of blocks, fetches the
  *     key blocks' xpubs over the bus and saves the record once confirmed.
  *
  * Records travel over the bus in chunks of at most PHYLAX_STORE_CHUNK bytes,
- * so a storage block can write them page by page (e.g. to an EEPROM).
+ * so a block could also write them page by page (e.g. to an EEPROM).
  *
  * This library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -34,7 +37,7 @@
 #define PHYLAX_WALLET_MAX_KEYS 3  // 3-of-3 design limit
 #define PHYLAX_WALLET_NAME_LEN 16
 #define PHYLAX_STORE_CHUNK 128     // max bytes per bus transfer / page write
-#define PHYLAX_WALLET_RECORD_SIZE 480  // 3-of-3 record = 473 bytes
+#define PHYLAX_WALLET_RECORD_SIZE 480  // 3-of-3 record = 477 bytes
 
 // Store status codes (STORE_DATA / STORE_ACK)
 #define PHYLAX_STORE_OK 0
@@ -57,6 +60,7 @@ typedef struct {
 
 typedef struct {
   bool used;
+  uint32_t generation;  // raised on every change; newest copy wins
   char name[PHYLAX_WALLET_NAME_LEN + 1];
   uint8_t n;  // number of keys = threshold (n-of-n)
   PhylaxKeyRec keys[PHYLAX_WALLET_MAX_KEYS];  // sorted by fingerprint
@@ -67,16 +71,21 @@ size_t phylax_wallet_encode(const PhylaxWalletRec *w,
                             uint8_t out[PHYLAX_WALLET_RECORD_SIZE]);
 bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w);
 
+// --- this block's own copy (flash) ---
+bool phylax_store_get(int slot, uint8_t *buf, uint16_t *len);
+bool phylax_store_put(int slot, const uint8_t *buf, uint16_t len);  // 0: delete
+
 // --- main block ---
 void phylax_wallet_poll(void);
 void phylax_wallet_on_store_reply(const PhylaxFrame *f);
-bool phylax_wallet_storage_present(void);
+// The wallets are known: own copy loaded and every block in the stack read.
+bool phylax_wallet_ready(void);
 // Saved wallet in `slot`, or NULL. `complete`: all its blocks are present.
 const PhylaxWalletRec *phylax_wallet_get(int slot, bool *complete);
 // Main loop, after the buttons were read: the "New wallet?" prompt.
 void phylax_wallet_ui_poll(void);
 
-// --- storage block ---
+// --- every other block: let the main block read and write its copy ---
 void phylax_storage_on_request(const PhylaxFrame *f);
 
 #endif

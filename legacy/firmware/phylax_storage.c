@@ -1,21 +1,24 @@
 /*
- * PHYLAX Blocks - storage block: wallet records in flash, and the record
- * format shared with the main block. See phylax_wallet.h.
+ * PHYLAX Blocks - wallet records in a block's flash, the record format,
+ * and the bus side that lets the main block read and write them. Every
+ * block keeps a copy of every wallet. See phylax_wallet.h.
  *
- * Record layout (PHYLAX_WALLET_RECORD_SIZE bytes, little-endian):
+ * Record layout (at most PHYLAX_WALLET_RECORD_SIZE bytes, little-endian):
  *   0      'P'  magic
- *   1      1    format version
+ *   1      2    format version
  *   2      n    keys (= threshold)
  *   3      0    script type: wsh(sortedmulti)
- *   4..20       name, NUL padded (17 bytes)
- *   21..        n x key: fingerprint(4), then for mainnet and testnet:
+ *   4..7        generation: raised on every change (e.g. rename), so the
+ *               newest copy wins when blocks disagree
+ *   8..24       name, NUL padded (17 bytes)
+ *   25..        n x key: fingerprint(4), then for mainnet and testnet:
  *               parent fingerprint(4), child number(4), chain code(32),
  *               public key(33)
  *   then        CRC-16/CCITT-FALSE over everything before it
  *
  * The records live in Trezor's own flash storage under public, writable
- * keys (readable and writable without a PIN: a storage block has no screen,
- * and fingerprints and xpubs are not secret).
+ * keys (readable and writable without a PIN: a key block is reached only
+ * over the bus, and fingerprints and xpubs are not secret).
  *
  * This library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -29,7 +32,7 @@
 #include "phylax_wallet.h"
 #include "storage.h"
 
-#define REC_HEADER 21
+#define REC_HEADER 25
 #define REC_XPUB (4 + 4 + 32 + 33)
 #define REC_KEY (4 + 2 * REC_XPUB)
 
@@ -74,10 +77,11 @@ size_t phylax_wallet_encode(const PhylaxWalletRec *w,
   if (w->n < 1 || w->n > PHYLAX_WALLET_MAX_KEYS) return 0;
   memzero(out, PHYLAX_WALLET_RECORD_SIZE);
   out[0] = 'P';
-  out[1] = 1;
+  out[1] = 2;
   out[2] = w->n;
   out[3] = 0;
-  strlcpy((char *)out + 4, w->name, PHYLAX_WALLET_NAME_LEN + 1);
+  put32(out + 4, w->generation);
+  strlcpy((char *)out + 8, w->name, PHYLAX_WALLET_NAME_LEN + 1);
   uint8_t *p = out + REC_HEADER;
   for (int i = 0; i < w->n; i++) {
     put32(p, w->keys[i].fingerprint);
@@ -93,7 +97,7 @@ size_t phylax_wallet_encode(const PhylaxWalletRec *w,
 
 bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w) {
   memzero(w, sizeof(*w));
-  if (len < REC_HEADER + 2 || in[0] != 'P' || in[1] != 1 || in[3] != 0) {
+  if (len < REC_HEADER + 2 || in[0] != 'P' || in[1] != 2 || in[3] != 0) {
     return false;
   }
   uint8_t n = in[2];
@@ -103,7 +107,8 @@ bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w) {
   uint16_t crc = phylax_crc16(in, body, 0xFFFF);
   if ((in[body] | (in[body + 1] << 8)) != crc) return false;
   w->n = n;
-  memcpy(w->name, in + 4, PHYLAX_WALLET_NAME_LEN);
+  w->generation = get32(in + 4);
+  memcpy(w->name, in + 8, PHYLAX_WALLET_NAME_LEN);
   w->name[PHYLAX_WALLET_NAME_LEN] = '\0';
   const uint8_t *p = in + REC_HEADER;
   for (int i = 0; i < n; i++) {
@@ -115,7 +120,26 @@ bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w) {
   return true;
 }
 
-// ------------------------------------------------------------ storage block
+// ------------------------------------------------------------ local copy
+
+bool phylax_store_get(int slot, uint8_t *buf, uint16_t *len) {
+  if (slot < 0 || slot >= PHYLAX_WALLET_SLOTS) return false;
+  return sectrue ==
+         storage_get(SLOT_KEY(slot), buf, PHYLAX_WALLET_RECORD_SIZE, len);
+}
+
+bool phylax_store_put(int slot, const uint8_t *buf, uint16_t len) {
+  if (slot < 0 || slot >= PHYLAX_WALLET_SLOTS) return false;
+  if (len == 0) {
+    storage_delete(SLOT_KEY(slot));
+    return true;
+  }
+  PhylaxWalletRec check;
+  return phylax_wallet_decode(buf, len, &check) &&
+         sectrue == storage_set(SLOT_KEY(slot), buf, len);
+}
+
+// ------------------------------------------------------------ bus side
 
 // A record being written: chunks must arrive in order, offset 0 first.
 static struct {
@@ -148,8 +172,7 @@ static void on_get(const PhylaxFrame *f) {
           NULL, 0);
     return;
   }
-  if (sectrue !=
-      storage_get(SLOT_KEY(slot), record, sizeof(record), &len)) {
+  if (!phylax_store_get(slot, record, &len)) {
     reply(f->src, PHYLAX_MSG_STORE_DATA, slot, offset, PHYLAX_STORE_EMPTY,
           NULL, 0);
     return;
@@ -177,8 +200,7 @@ static void on_put(const PhylaxFrame *f) {
       total > PHYLAX_WALLET_RECORD_SIZE) {
     status = PHYLAX_STORE_ERROR;
   } else if (total == 0) {
-    // Delete the slot.
-    storage_delete(SLOT_KEY(slot));
+    phylax_store_put(slot, NULL, 0);  // delete the slot
   } else {
     if (offset == 0) {
       staging.slot = slot;
@@ -193,12 +215,8 @@ static void on_put(const PhylaxFrame *f) {
       memcpy(staging.data + offset, data, n);
       staging.received += n;
       if (staging.received == total) {
-        PhylaxWalletRec check;
-        if (!phylax_wallet_decode(staging.data, total, &check)) {
+        if (!phylax_store_put(slot, staging.data, total)) {
           status = PHYLAX_STORE_BAD_RECORD;
-        } else if (sectrue !=
-                   storage_set(SLOT_KEY(slot), staging.data, total)) {
-          status = PHYLAX_STORE_ERROR;
         }
         staging.slot = -1;
       }

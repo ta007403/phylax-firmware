@@ -1,5 +1,6 @@
 /*
- * PHYLAX Blocks - main block: saved wallets. See phylax_wallet.h.
+ * PHYLAX Blocks - main block: saved wallets, a copy on every block.
+ * See phylax_wallet.h.
  *
  * This library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -29,28 +30,49 @@
 #define REQUEST_TIMEOUT_MS 800
 #define REQUEST_RETRIES 3
 #define XPUB_TIMEOUT_MS 10000
-#define RETRY_PAUSE_MS 5000  // after a failed fetch or save
+#define RETRY_PAUSE_MS 5000  // after a failed fetch, or a block not answering
 
 // ------------------------------------------------------------ state
 
+// The merged wallet list: what every block's copy should become.
 static PhylaxWalletRec wallets[PHYLAX_WALLET_SLOTS];
-static uint8_t storage_addr = PHYLAX_ADDR_NONE;
-static bool loaded = false;
+
+// What one copy holds in one slot: the wallet's identity and generation.
+typedef struct {
+  uint32_t id;  // 0 = empty
+  uint32_t generation;
+} SlotState;
+
+// The main block's own copy.
+static bool own_loaded = false;
+static SlotState own_slots[PHYLAX_WALLET_SLOTS];
+
+// The other blocks' copies, known by block id.
+typedef struct {
+  bool used;
+  uint8_t uid[PHYLAX_UID_SIZE];
+  uint8_t addr;
+  bool loaded;
+  uint32_t retry_after_ms;  // a block that did not answer is left alone
+  SlotState slots[PHYLAX_WALLET_SLOTS];
+} Replica;
+static Replica reps[PHYLAX_STACK_MAX];
 
 typedef enum {
   W_IDLE,
-  W_LOADING,      // reading records from the storage block
-  W_FETCHING,     // asking key blocks for their xpubs
-  W_PROMPT,       // "New n-of-n wallet?" on screen
-  W_SAVING,       // writing a record to the storage block
+  W_LOADING,   // reading a block's copy
+  W_WRITING,   // writing one slot of a block's copy
+  W_FETCHING,  // asking key blocks for their xpubs
+  W_PROMPT,    // "New n-of-n wallet?" on screen
 } WalletState;
 static WalletState wstate = W_IDLE;
 
-// Request in flight to the storage block (loading or saving).
+// Request in flight to a block (loading or writing one slot).
 static struct {
+  int rep;
   int slot;
   uint16_t offset;
-  uint16_t total;  // saving: record length
+  uint16_t total;  // writing: record length (0 = delete)
   uint8_t retries;
   uint32_t sent_ms;
   uint8_t data[PHYLAX_WALLET_RECORD_SIZE];
@@ -81,14 +103,57 @@ static char shown[64];
 
 // ------------------------------------------------------------ helpers
 
-bool phylax_wallet_storage_present(void) {
-  return storage_addr != PHYLAX_ADDR_NONE;
-}
-
 static void hex32(char *out, uint32_t v) {
   static const char hexd[] = "0123456789abcdef";
   for (int i = 0; i < 8; i++) out[i] = hexd[(v >> (28 - 4 * i)) & 0xF];
   out[8] = '\0';
+}
+
+// A wallet's identity: its n and set of fingerprints (stored sorted).
+static uint32_t wallet_id(const PhylaxWalletRec *w) {
+  if (!w->used) return 0;
+  uint32_t h = 2166136261u ^ w->n;  // FNV-1a
+  for (int k = 0; k < w->n; k++) {
+    for (int b = 0; b < 4; b++) {
+      h ^= (w->keys[k].fingerprint >> (8 * b)) & 0xFF;
+      h *= 16777619u;
+    }
+  }
+  return h ? h : 1;
+}
+
+static SlotState slot_state(const PhylaxWalletRec *w) {
+  SlotState st = {wallet_id(w), w->used ? w->generation : 0};
+  return st;
+}
+
+static bool same_state(SlotState a, SlotState b) {
+  return a.id == b.id && a.generation == b.generation;
+}
+
+// Fold one copy's record into the merged list: a wallet already known is
+// replaced only by a newer generation; an unknown one takes the same slot if
+// free, else the first free slot.
+static void merge(int slot, const PhylaxWalletRec *w) {
+  if (!w->used) return;
+  uint32_t id = wallet_id(w);
+  for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
+    if (wallets[i].used && wallet_id(&wallets[i]) == id) {
+      if (w->generation > wallets[i].generation) wallets[i] = *w;
+      return;
+    }
+  }
+  if (!wallets[slot].used) {
+    wallets[slot] = *w;
+    return;
+  }
+  for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
+    if (!wallets[i].used) {
+      wallets[i] = *w;
+      return;
+    }
+  }
+  // all 8 slots taken: the extra wallet is dropped
 }
 
 // The seed fingerprints in the stack now: the main block's and every key
@@ -111,7 +176,6 @@ static int present_fps(uint32_t fps[PHYLAX_STACK_MAX + 1],
       addrs[n++] = e->addr;
     }
   }
-  // sort both by fingerprint
   for (int i = 1; i < n; i++) {
     for (int j = i; j > 0 && fps[j - 1] > fps[j]; j--) {
       uint32_t t = fps[j];
@@ -148,13 +212,68 @@ const PhylaxWalletRec *phylax_wallet_get(int slot, bool *complete) {
   return &wallets[slot];
 }
 
-// ------------------------------------------------------------ storage I/O
+// ------------------------------------------------------------ copies
+
+static void load_own_copy(void) {
+  static uint8_t buf[PHYLAX_WALLET_RECORD_SIZE];
+  static PhylaxWalletRec w;
+  for (int s = 0; s < PHYLAX_WALLET_SLOTS; s++) {
+    uint16_t len = 0;
+    own_slots[s].id = 0;
+    own_slots[s].generation = 0;
+    if (phylax_store_get(s, buf, &len) && phylax_wallet_decode(buf, len, &w)) {
+      merge(s, &w);
+      own_slots[s] = slot_state(&w);
+    }
+  }
+  own_loaded = true;
+}
+
+// Keep the replica list in step with the key blocks in the stack.
+static void refresh_replicas(void) {
+  const PhylaxStackEntry *e;
+  // forget blocks that left
+  for (int r = 0; r < PHYLAX_STACK_MAX; r++) {
+    if (!reps[r].used) continue;
+    bool present = false;
+    for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+      if (memcmp(e->hello.uid, reps[r].uid, PHYLAX_UID_SIZE) == 0) {
+        present = true;
+        reps[r].addr = e->addr;
+      }
+    }
+    if (!present) memzero(&reps[r], sizeof(reps[r]));
+  }
+  // add blocks that joined
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->hello.kind != PHYLAX_KIND_KEY) continue;
+    bool known = false;
+    for (int r = 0; r < PHYLAX_STACK_MAX; r++) {
+      if (reps[r].used &&
+          memcmp(e->hello.uid, reps[r].uid, PHYLAX_UID_SIZE) == 0) {
+        known = true;
+      }
+    }
+    for (int r = 0; !known && r < PHYLAX_STACK_MAX; r++) {
+      if (!reps[r].used) {
+        reps[r].used = true;
+        memcpy(reps[r].uid, e->hello.uid, PHYLAX_UID_SIZE);
+        reps[r].addr = e->addr;
+        known = true;
+      }
+    }
+  }
+}
+
+static bool rep_available(int r) {
+  return reps[r].used && (int32_t)(timer_ms() - reps[r].retry_after_ms) >= 0;
+}
 
 static void send_get(void) {
   uint8_t p[4] = {(uint8_t)io.slot, io.offset & 0xFF, io.offset >> 8,
                   PHYLAX_STORE_CHUNK};
   io.sent_ms = timer_ms();
-  phylax_bus_send(storage_addr, PHYLAX_MSG_STORE_GET, p, sizeof(p));
+  phylax_bus_send(reps[io.rep].addr, PHYLAX_MSG_STORE_GET, p, sizeof(p));
 }
 
 static void send_put(void) {
@@ -166,15 +285,14 @@ static void send_put(void) {
   p[2] = io.offset >> 8;
   p[3] = io.total & 0xFF;
   p[4] = io.total >> 8;
-  memcpy(p + 5, io.data + io.offset, n);
+  if (n) memcpy(p + 5, io.data + io.offset, n);
   io.sent_ms = timer_ms();
-  phylax_bus_send(storage_addr, PHYLAX_MSG_STORE_PUT, p, 5 + n);
+  phylax_bus_send(reps[io.rep].addr, PHYLAX_MSG_STORE_PUT, p, 5 + n);
 }
 
-static void start_loading(void) {
-  memzero(wallets, sizeof(wallets));
-  loaded = false;
+static void start_load(int r) {
   wstate = W_LOADING;
+  io.rep = r;
   io.slot = 0;
   io.offset = 0;
   io.retries = 0;
@@ -186,25 +304,28 @@ static void load_next_slot(void) {
   io.offset = 0;
   io.retries = 0;
   if (io.slot >= PHYLAX_WALLET_SLOTS) {
-    loaded = true;
+    reps[io.rep].loaded = true;
     wstate = W_IDLE;
-    shown[0] = '\0';  // redraw the status
+    shown[0] = '\0';
     return;
   }
   send_get();
 }
 
-static void start_saving(int slot, const PhylaxWalletRec *w) {
+static void start_write(int r, int slot) {
+  wstate = W_WRITING;
+  io.rep = r;
   io.slot = slot;
   io.offset = 0;
   io.retries = 0;
-  io.total = phylax_wallet_encode(w, io.data);
-  wstate = W_SAVING;
+  io.total = wallets[slot].used ? phylax_wallet_encode(&wallets[slot], io.data)
+                                : 0;  // 0: delete the slot
   send_put();
 }
 
 void phylax_wallet_on_store_reply(const PhylaxFrame *f) {
-  if (f->src != storage_addr || f->len < 4) return;
+  if (wstate != W_LOADING && wstate != W_WRITING) return;
+  if (f->src != reps[io.rep].addr || f->len < 4) return;
   uint8_t slot = f->payload[0];
   uint16_t offset = f->payload[1] | (f->payload[2] << 8);
   uint8_t status = f->payload[3];
@@ -212,7 +333,10 @@ void phylax_wallet_on_store_reply(const PhylaxFrame *f) {
 
   if (wstate == W_LOADING && f->type == PHYLAX_MSG_STORE_DATA) {
     uint16_t n = f->len - 4;
-    if (status != PHYLAX_STORE_OK) {  // empty slot (or error): skip it
+    SlotState *st = &reps[io.rep].slots[io.slot];
+    if (status != PHYLAX_STORE_OK) {  // empty slot (or unreadable)
+      st->id = 0;
+      st->generation = 0;
       load_next_slot();
       return;
     }
@@ -225,15 +349,22 @@ void phylax_wallet_on_store_reply(const PhylaxFrame *f) {
       send_get();  // more to read
       return;
     }
-    phylax_wallet_decode(io.data, io.offset, &wallets[io.slot]);
+    static PhylaxWalletRec w;
+    if (phylax_wallet_decode(io.data, io.offset, &w)) {
+      merge(io.slot, &w);
+      *st = slot_state(&w);
+    } else {
+      st->id = 0;
+      st->generation = 0;
+    }
     load_next_slot();
     return;
   }
 
-  if (wstate == W_SAVING && f->type == PHYLAX_MSG_STORE_ACK) {
+  if (wstate == W_WRITING && f->type == PHYLAX_MSG_STORE_ACK) {
     if (status != PHYLAX_STORE_OK) {
-      wstate = W_IDLE;  // failed: the stack is checked again a bit later
-      pause_retries();
+      reps[io.rep].retry_after_ms = timer_ms() + RETRY_PAUSE_MS;
+      wstate = W_IDLE;
       return;
     }
     uint16_t n = io.total - io.offset;
@@ -243,11 +374,53 @@ void phylax_wallet_on_store_reply(const PhylaxFrame *f) {
       send_put();
       return;
     }
-    wallets[io.slot] = candidate;  // saved
-    wallets[io.slot].used = true;
+    reps[io.rep].slots[io.slot] = slot_state(&wallets[io.slot]);
     wstate = W_IDLE;
-    shown[0] = '\0';
   }
+}
+
+// One step of keeping every copy equal to the merged list. Returns true if
+// it started (or did) some work, false when everything is in step.
+static bool sync_step(void) {
+  if (!own_loaded) {
+    load_own_copy();
+    return true;
+  }
+  for (int r = 0; r < PHYLAX_STACK_MAX; r++) {
+    if (rep_available(r) && !reps[r].loaded) {
+      start_load(r);
+      return true;
+    }
+  }
+  // own copy first (direct flash access), then the other blocks
+  for (int s = 0; s < PHYLAX_WALLET_SLOTS; s++) {
+    SlotState want = slot_state(&wallets[s]);
+    if (!same_state(own_slots[s], want)) {
+      static uint8_t buf[PHYLAX_WALLET_RECORD_SIZE];
+      uint16_t len = wallets[s].used ? phylax_wallet_encode(&wallets[s], buf)
+                                     : 0;
+      if (phylax_store_put(s, buf, len)) own_slots[s] = want;
+      return true;
+    }
+  }
+  for (int r = 0; r < PHYLAX_STACK_MAX; r++) {
+    if (!rep_available(r) || !reps[r].loaded) continue;
+    for (int s = 0; s < PHYLAX_WALLET_SLOTS; s++) {
+      if (!same_state(reps[r].slots[s], slot_state(&wallets[s]))) {
+        start_write(r, s);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool phylax_wallet_ready(void) {
+  if (!own_loaded) return false;
+  for (int r = 0; r < PHYLAX_STACK_MAX; r++) {
+    if (reps[r].used && !reps[r].loaded) return false;
+  }
+  return true;
 }
 
 // ------------------------------------------------------------ xpubs
@@ -403,6 +576,7 @@ static void start_new_wallet(const uint32_t *fps, const uint8_t *addrs,
 }
 
 // ------------------------------------------------------------ screens
+// ------------------------------------------------------------ screens
 
 static void show_status(const char *line1, const char *line2,
                         const char *line3) {
@@ -454,13 +628,17 @@ static void prompt_answer(bool yes) {
   int slot = free_slot();
   if (slot < 0) {
     wstate = W_IDLE;
-    show_status(_("Storage is full"), _("(8 wallets)"), NULL);
+    show_status(_("Wallet list is full"), _("(8 wallets)"), NULL);
     return;
   }
+  // Becomes the newest copy; the sync writes it to every block.
   candidate.used = true;
+  candidate.generation = 1;
+  wallets[slot] = candidate;
+  wstate = W_IDLE;
+  shown[0] = '\0';
   layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"),
                _("Saving wallet"), candidate.name, NULL, NULL, NULL);
-  start_saving(slot, &candidate);
 }
 
 void phylax_wallet_ui_poll(void) {
@@ -533,48 +711,29 @@ static void check_stack(void) {
   }
 }
 
-// ------------------------------------------------------------ poll
 
-static uint8_t find_storage(void) {
-  const PhylaxStackEntry *e;
-  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
-    if (e->hello.kind == PHYLAX_KIND_STORAGE) return e->addr;
-  }
-  return PHYLAX_ADDR_NONE;
-}
+// ------------------------------------------------------------ poll
 
 void phylax_wallet_poll(void) {
   // Signing has priority: drop whatever we were doing with a key block.
   if (phylax_relay_state() != PHYLAX_RELAY_IDLE) {
-    if (wstate == W_FETCHING || wstate == W_PROMPT) {
-      if (wstate == W_FETCHING) phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE,
-                                                           NULL);
-      wstate = W_IDLE;
-    }
-    return;
+    // The relay has taken over the conversation with the key blocks (it set
+    // its own peer); just step aside. A late PublicKey is ignored by both.
+    if (wstate == W_FETCHING || wstate == W_PROMPT) wstate = W_IDLE;
+    return;  // a copy being read or written just times out and is retried
   }
-
-  uint8_t s = find_storage();
-  if (s != storage_addr) {
-    storage_addr = s;
-    if (s == PHYLAX_ADDR_NONE) {  // storage block removed
-      memzero(wallets, sizeof(wallets));
-      loaded = false;
-      if (wstate != W_FETCHING) wstate = W_IDLE;
-    } else {
-      start_loading();
-    }
-    return;
-  }
+  if (!config_isInitialized()) return;
 
   uint32_t now = timer_ms();
   switch (wstate) {
     case W_LOADING:
-    case W_SAVING:
+    case W_WRITING:
       if (now - io.sent_ms >= REQUEST_TIMEOUT_MS) {
         if (++io.retries > REQUEST_RETRIES) {
-          wstate = W_IDLE;  // give up; reloaded when the storage block returns
-          pause_retries();
+          // The block does not answer: leave it alone for a while.
+          reps[io.rep].retry_after_ms = now + RETRY_PAUSE_MS;
+          reps[io.rep].loaded = false;
+          wstate = W_IDLE;
           return;
         }
         if (wstate == W_LOADING) send_get();
@@ -603,7 +762,10 @@ void phylax_wallet_poll(void) {
       break;
   }
 
-  if (!loaded || !config_isInitialized()) return;
+  refresh_replicas();
+  if (sync_step()) return;
+
+  // Every copy is in step: tell the user what the stack means.
   // Only change the screen while nothing else is shown.
   if (layoutLast != layoutHomescreen && layoutLast != layoutDialog) return;
   check_stack();

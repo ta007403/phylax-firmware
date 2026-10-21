@@ -111,13 +111,14 @@ def main():
                        args.headless, autoconfirm=False)
     try:
         print("Scenarios A and B: key block waits for a button press, then is pulled out")
-        key.start()
+        key.start()  # xpub read before the main block exists (see spike2b)
+        key_node = btc.get_public_node(key.session, parse_path(s.ACCOUNT), coin_name=s.COIN).node
         main_blk.start()
         s.wait_for_blocks(main_blk.session, lambda bl: len(s.key_blocks(bl)) == 1,
                           what="the key block to be discovered")
-        nodes = {b.name: btc.get_public_node(b.session, parse_path(s.ACCOUNT),
-                                             coin_name=s.COIN).node
-                 for b in (main_blk, key)}
+        nodes = {main_blk.name: btc.get_public_node(main_blk.session, parse_path(s.ACCOUNT),
+                                                    coin_name=s.COIN).node,
+                 key.name: key_node}
         inputs, outputs, prev = build_tx(main_blk.session, nodes)
         t, result = sign_in_thread(main_blk.session, inputs, outputs, prev)
 

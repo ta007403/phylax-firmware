@@ -66,7 +66,7 @@ typedef enum {
 typedef enum {
   PHYLAX_KIND_MAIN = 0,
   PHYLAX_KIND_KEY = 1,
-  PHYLAX_KIND_STORAGE = 2,
+  PHYLAX_KIND_STORAGE = 2,  // reserved: every block now keeps the wallets
 } PhylaxKind;
 
 // What this firmware does.
@@ -74,7 +74,6 @@ typedef enum {
   PHYLAX_ROLE_STOCK = 0,  // plain Trezor One behaviour, bus unused
   PHYLAX_ROLE_MAIN = 1,   // top block: USB to the PC, bus master
   PHYLAX_ROLE_KEY = 2,    // key block: answers Trezor messages over the bus
-  PHYLAX_ROLE_STORAGE = 3,  // storage block: keeps wallet records, no seed
 } PhylaxRole;
 
 typedef struct {

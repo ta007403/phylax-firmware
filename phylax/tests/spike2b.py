@@ -223,13 +223,17 @@ def main():
     ok = False
     try:
         print("Step 1  Start key block 2 and the main block (both running)")
+        # Read the key block's xpub before the main block exists: a real key
+        # block is reached only over the bus, never by USB and bus at once.
         key.start()
+        key_node = btc.get_public_node(key.session, parse_path(ACCOUNT), coin_name=COIN).node
         main_blk.start()
         wait_for_blocks(main_blk.session, lambda bl: len(key_blocks(bl)) == 1,
                         what="the key block to be discovered")
         nodes = {
-            b.name: btc.get_public_node(b.session, parse_path(ACCOUNT), coin_name=COIN).node
-            for b in (main_blk, key)
+            main_blk.name: btc.get_public_node(main_blk.session, parse_path(ACCOUNT),
+                                               coin_name=COIN).node,
+            key.name: key_node,
         }
         ms_in, ws, order = build_multisig(nodes, [0, 0])
         ms_chg, ws_chg, _ = build_multisig(nodes, [1, 0])

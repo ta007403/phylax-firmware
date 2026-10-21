@@ -169,7 +169,6 @@ PhylaxRole phylax_role(void) {
     role = PHYLAX_ROLE_STOCK;
     if (v != NULL && strcmp(v, "main") == 0) role = PHYLAX_ROLE_MAIN;
     if (v != NULL && strcmp(v, "key") == 0) role = PHYLAX_ROLE_KEY;
-    if (v != NULL && strcmp(v, "storage") == 0) role = PHYLAX_ROLE_STORAGE;
   }
   return (PhylaxRole)role;
 #else
@@ -246,13 +245,11 @@ static bool my_fingerprint(const uint8_t uid[PHYLAX_UID_SIZE], uint32_t *fp) {
 void phylax_my_hello(PhylaxHello *h) {
   memzero(h, sizeof(*h));
   my_uid(h->uid);
-  h->kind = phylax_role() == PHYLAX_ROLE_MAIN      ? PHYLAX_KIND_MAIN
-            : phylax_role() == PHYLAX_ROLE_STORAGE ? PHYLAX_KIND_STORAGE
-                                                   : PHYLAX_KIND_KEY;
+  h->kind = phylax_role() == PHYLAX_ROLE_MAIN ? PHYLAX_KIND_MAIN
+                                               : PHYLAX_KIND_KEY;
   h->version[0] = VERSION_MAJOR;
   h->version[1] = VERSION_MINOR;
   h->version[2] = VERSION_PATCH;
-  if (phylax_role() == PHYLAX_ROLE_STORAGE) return;  // no seed by design
   if (!config_isInitialized()) return;
   h->flags |= PHYLAX_HELLO_INITIALIZED;
   if (!session_isUnlocked()) {
@@ -456,7 +453,7 @@ static void main_on_frame(const PhylaxFrame *f) {
   }
 }
 
-// Key and storage blocks.
+// Key blocks.
 static void block_on_frame(const PhylaxFrame *f) {
   switch (f->type) {
     case PHYLAX_MSG_DISCOVER:
@@ -467,13 +464,11 @@ static void block_on_frame(const PhylaxFrame *f) {
       break;
     case PHYLAX_MSG_STORE_GET:
     case PHYLAX_MSG_STORE_PUT:
-      if (phylax_role() == PHYLAX_ROLE_STORAGE && my_addr != PHYLAX_ADDR_NONE) {
-        phylax_storage_on_request(f);
-      }
+      // Every key block keeps a copy of the saved wallets.
+      if (my_addr != PHYLAX_ADDR_NONE) phylax_storage_on_request(f);
       break;
     case PHYLAX_MSG_TREZOR:
-      if (phylax_role() != PHYLAX_ROLE_KEY || f->len != USB_PACKET_SIZE ||
-          my_addr == PHYLAX_ADDR_NONE) {
+      if (f->len != USB_PACKET_SIZE || my_addr == PHYLAX_ADDR_NONE) {
         break;
       }
       reply_via_bus = true;
@@ -526,7 +521,6 @@ void phylax_poll(void) {
       phylax_wallet_poll();
       break;
     case PHYLAX_ROLE_KEY:
-    case PHYLAX_ROLE_STORAGE:
       if (hello_pending && (int32_t)(timer_ms() - hello_at_ms) >= 0) {
         hello_pending = false;
         key_send_hello();

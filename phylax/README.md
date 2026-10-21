@@ -13,8 +13,7 @@ real savings on it.**
 | --- | --- | --- |
 | stock | (default) | Plain Trezor One behaviour, bus unused |
 | main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to each key block in turn (pass 1), then signs itself, placing each key block's signature in the slot whose key verifies it (pass 2) |
-| key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus |
-| storage | `PHYLAX_ROLE=storage` | No seed; keeps up to 8 wallet records in flash, read and written over the bus in chunks of at most 128 bytes |
+| key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus; keeps a copy of every saved wallet |
 
 On real hardware the role is chosen at build time with `-DPHYLAX_ROLE=1`
 (main) or `2` (key). The RS485 transport is not written yet, so device
@@ -51,32 +50,49 @@ If no key block answers for 10 s during signing, the main block cancels with
 "Key block disconnected". With no key block in the stack, SignTx fails at
 once with "No key block attached".
 
-## Saved wallets (storage block)
+## Saved wallets (a copy on every block)
+
+There is no separate storage block: every block keeps a copy of every saved
+wallet in its own flash, so losing any block - the main block included -
+loses no wallet. Hardware: one PCB for all blocks; the main block has the
+USB port and pins on one side, key blocks pins on both sides. The bus has
+120 ohm termination and bias resistors on the main block only.
 
 A wallet is `wsh(sortedmulti(n, ...))`, n-of-n, one key per block with seed.
-The storage block keeps each wallet's name, fingerprints and BIP48 account
-xpubs (`m/48'/0'/0'/2'` and `m/48'/1'/0'/2'`) as a 473-byte record at most,
-under public, writable Trezor storage keys (no secrets in it, no PIN
+A record holds its name, a generation counter, the fingerprints and the
+BIP48 account xpubs (`m/48'/0'/0'/2'` and `m/48'/1'/0'/2'`): 477 bytes at
+most, under public, writable Trezor storage keys (no secrets in it, no PIN
 needed). Records travel over the bus in chunks of at most 128 bytes.
 
-When a storage block is in the stack, the main block loads all records and
-compares them with the seed fingerprints present:
+The main block reads the copy of every block that joins, merges it with its
+own (a wallet is identified by its set of fingerprints; the higher
+generation wins) and writes the result back wherever a copy is missing or
+older. Then it compares the wallets with the seed fingerprints present:
 
 - the blocks match a saved wallet: "*2-of-2 #1* is ready."
 - a new combination of 2 or 3 blocks: "New 2-of-2 wallet?" with the
   fingerprints; on **Create** (right button) it fetches the key blocks'
-  xpubs over the bus and saves the record; **No** is remembered until the
-  blocks change
+  xpubs over the bus and saves the wallet on every block; **No** is
+  remembered until the blocks change
 - a saved wallet is missing one block: "Attach key block 777dfe5d to use
   wallet *3-of-3 #1*"
 
 The PC reads the list with `PhylaxGetWallets` (fingerprints only) and one
 wallet with its xpubs with `PhylaxGetWallet` (enough to build the
-descriptor). Without a storage block everything still works; there are just
-no saved wallets and no prompts.
+descriptor).
 
 In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 "Create" automatically (tests only).
+
+## Known limits
+
+- A key block must not be driven over USB and the bus at the same time: it
+  has one message parser, so the two conversations would mix. On real
+  hardware the key blocks' USB ports are covered; the emulator tests read a
+  key block's xpub before the main block starts.
+- The RS485 (USART2, PA1-PA3) transport is not written yet, so device builds
+  behave as stock Trezor firmware until it is.
+- No wallet rename or delete from the PC yet.
 
 ## Tests
 
@@ -90,7 +106,7 @@ uv run --with embit python ../phylax/tests/spike2b.py   # main block relays to a
 uv run --with embit python ../phylax/tests/test_timeout.py    # 10 s timeout, slow user, no key block
 uv run --with embit python ../phylax/tests/test_discovery.py  # blocks snapped on and off, fingerprints
 uv run --with embit python ../phylax/tests/test_3of3.py       # 3-of-3, and a stranger key block skipped
-uv run --with embit python ../phylax/tests/test_storage.py    # wallets saved, read back, 2-of-2 then 3-of-3
+uv run --with embit python ../phylax/tests/test_wallets.py    # wallets on every block, main block replaced
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

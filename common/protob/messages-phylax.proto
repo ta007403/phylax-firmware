@@ -18,7 +18,7 @@ option (include_in_bitcoin_only) = true;
 enum PhylaxBlockKind {
     PHYLAX_BLOCK_MAIN = 0;      // top block, USB to the PC
     PHYLAX_BLOCK_KEY = 1;       // holds one seed, signs
-    PHYLAX_BLOCK_STORAGE = 2;   // holds wallet descriptors, no seed
+    PHYLAX_BLOCK_STORAGE = 2;   // reserved (every block keeps the saved wallets)
 }
 
 /**
@@ -64,11 +64,11 @@ message PhylaxWalletKey {
 }
 
 /**
- * A wallet saved in the storage block: wsh(sortedmulti(n, keys...)), n-of-n.
+ * A saved wallet: wsh(sortedmulti(n, keys...)), n-of-n.
  * Summary, without xpubs (see PhylaxGetWallet for those).
  */
 message PhylaxWalletSummary {
-    required uint32 slot = 1;                   // 0..7 in the storage block
+    required uint32 slot = 1;                   // 0..7, the same on every block
     required string name = 2;                   // e.g. "2-of-2 #1"
     required uint32 threshold = 3;              // m (= n for PHYLAX)
     repeated uint32 fingerprints = 4;           // sorted
@@ -76,7 +76,7 @@ message PhylaxWalletSummary {
 }
 
 /**
- * Request: Ask the main block for the wallets saved in the storage block
+ * Request: Ask the main block for the saved wallets
  * @start
  * @next PhylaxWallets
  * @next Failure
@@ -85,12 +85,12 @@ message PhylaxGetWallets {
 }
 
 /**
- * Response: Saved wallets (empty if there is no storage block)
+ * Response: Saved wallets (every block keeps a copy of all of them)
  * @end
  */
 message PhylaxWallets {
     repeated PhylaxWalletSummary wallets = 1;
-    required bool storage_present = 2;          // a storage block is in the stack
+    required bool storage_present = 2;          // every block's copy has been read
 }
 
 /**

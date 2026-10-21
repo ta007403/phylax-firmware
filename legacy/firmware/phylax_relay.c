@@ -234,6 +234,8 @@ void phylax_relay_on_key_message(uint16_t msg_id, const uint8_t *data,
       show_waiting();
       send_button_ack();
       return;
+    case MessageType_MessageType_PublicKey:
+      return;  // late answer to an interrupted xpub fetch: not for us
     case MessageType_MessageType_Failure: {
       static Failure fail;
       memzero(&fail, sizeof(fail));
