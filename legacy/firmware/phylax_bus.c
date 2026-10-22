@@ -8,6 +8,7 @@
  */
 
 #include "phylax_bus.h"
+#include "phylax_pin.h"
 
 #include <string.h>
 
@@ -466,6 +467,11 @@ static void block_on_frame(const PhylaxFrame *f) {
     case PHYLAX_MSG_STORE_PUT:
       // Every key block keeps a copy of the saved wallets.
       if (my_addr != PHYLAX_ADDR_NONE) phylax_storage_on_request(f);
+      break;
+    case PHYLAX_MSG_LOCAL_UI:
+      if (f->len >= 1 && my_addr != PHYLAX_ADDR_NONE) {
+        phylax_set_local_ui(f->payload[0] != 0);
+      }
       break;
     case PHYLAX_MSG_TREZOR:
       if (f->len != USB_PACKET_SIZE || my_addr == PHYLAX_ADDR_NONE) {

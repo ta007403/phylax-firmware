@@ -19,6 +19,7 @@
 
 #include "protect.h"
 #include "phylax_bus.h"
+#include "phylax_pin.h"
 #include "buttons.h"
 #include "config.h"
 #include "debug.h"
@@ -121,6 +122,11 @@ bool protectButton(ButtonRequestType type, bool confirm_only) {
 }
 
 const char *requestPin(PinMatrixRequestType type, const char *text) {
+  // PHYLAX: a key block being set up by the main block (no PC) takes the
+  // PIN on its own buttons.
+  if (phylax_local_ui()) {
+    return phylax_pin_entry(type);
+  }
   PinMatrixRequest resp = {0};
   memzero(&resp, sizeof(PinMatrixRequest));
   resp.has_type = true;

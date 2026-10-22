@@ -24,6 +24,7 @@
 #include "pb_decode.h"
 #include "pb_encode.h"
 #include "phylax_relay.h"
+#include "phylax_setup.h"
 #include "phylax_stack.h"
 #include "timer.h"
 
@@ -651,7 +652,9 @@ static void prompt_answer(bool yes) {
 }
 
 void phylax_wallet_ui_poll(void) {
-  if (phylax_role() != PHYLAX_ROLE_MAIN || wstate != W_PROMPT) return;
+  if (phylax_role() != PHYLAX_ROLE_MAIN) return;
+  phylax_setup_ui_poll();
+  if (wstate != W_PROMPT) return;
 #if EMULATOR
   if (phylax_emu_autoconfirm()) {  // tests: nobody presses the buttons
     prompt_answer(true);
@@ -730,9 +733,23 @@ void phylax_wallet_poll(void) {
     // The relay (or the PC, in select mode) has taken over the conversation with the key blocks (it set
     // its own peer); just step aside. A late PublicKey is ignored by both.
     if (wstate == W_FETCHING || wstate == W_PROMPT) wstate = W_IDLE;
+    phylax_setup_abort();
     return;  // a copy being read or written just times out and is retried
   }
-  if (!config_isInitialized()) return;
+  // Setting up a new key block: it has the screen and the bus conversation.
+  if (phylax_setup_busy()) {
+    phylax_setup_poll();
+    shown[0] = '\0';
+    return;
+  }
+  if (!config_isInitialized()) {
+    // No wallets without the main block's own seed, but a key block can
+    // still be set up.
+    if (layoutLast == layoutHomescreen || layoutLast == layoutDialog) {
+      phylax_setup_poll();
+    }
+    return;
+  }
 
   uint32_t now = timer_ms();
   switch (wstate) {
@@ -778,5 +795,10 @@ void phylax_wallet_poll(void) {
   // Every copy is in step: tell the user what the stack means.
   // Only change the screen while nothing else is shown.
   if (layoutLast != layoutHomescreen && layoutLast != layoutDialog) return;
+  // A key block without a seed first: "New key block found. Set it up?"
+  if (phylax_setup_poll()) {
+    shown[0] = '\0';
+    return;
+  }
   check_stack();
 }

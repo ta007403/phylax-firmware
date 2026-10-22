@@ -52,6 +52,7 @@ typedef enum {
   PHYLAX_MSG_STORE_PUT = 0x21,   // main -> storage: slot, offset(2), total(2), data
   PHYLAX_MSG_STORE_DATA = 0x22,  // storage -> main: slot, offset(2), status, data
   PHYLAX_MSG_STORE_ACK = 0x23,   // storage -> main: slot, offset(2), status
+  PHYLAX_MSG_LOCAL_UI = 0x30,    // main -> key: on(1); PINs on the key block
   PHYLAX_MSG_ERROR = 0x7F,
 } PhylaxMsgType;
 

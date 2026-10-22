@@ -18,6 +18,7 @@
  */
 
 #include "reset.h"
+#include "phylax_pin.h"
 #include "bip39.h"
 #include "config.h"
 #include "fsm.h"
@@ -97,6 +98,9 @@ static void send_entropy_request(bool set_prev_entropy) {
   }
 
   random_buffer(int_entropy, sizeof(int_entropy));
+  // PHYLAX: mix in the button timings collected while the PIN was entered
+  // on the block (no-op when there are none).
+  phylax_entropy_mix(int_entropy);
   if (entropy_check) {
     hmac_sha256(int_entropy, sizeof(int_entropy), NULL, 0,
                 resp.entropy_commitment.bytes);

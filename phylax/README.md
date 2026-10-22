@@ -28,6 +28,7 @@ builds behave as stock for now.
 | `PHYLAX_BUS_NODE` | 0 main, 1 key | Slot 0..7 on the emulated shared bus; must be unique |
 | `PHYLAX_BUS_PORT_BASE` | 21500 | Bus UDP port = base + node; every frame goes to all nodes |
 | `PHYLAX_EMU_AUTOCONFIRM` | off | `1`: confirm prompts that come over the bus (tests only) |
+| `PHYLAX_EMU_PIN_KEYS` | none | key block, with autoconfirm: button presses for PIN entry on the block, `L`/`R`/`B` (both); the carousel then starts on "1" (tests only) |
 
 Bus addresses are not configured: the main block is always 0x01 and hands
 key blocks 0x10, 0x11, ... during discovery.
@@ -84,6 +85,33 @@ descriptor).
 In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 "Create" automatically (tests only).
 
+## Setting up a key block with no PC
+
+When a key block without a seed joins, the main block asks **"New key block
+found. Set it up?"** on its own screen (right button: Set up, left: No).
+Then the key block does the rest on its own screen and buttons:
+
+1. "Create a new wallet?" - confirm.
+2. Choose a PIN, then enter it again. Left/right move through
+   `1..9, OK, DEL` (it wraps around and starts on a random digit, like the
+   Trezor Safe 3); **both buttons together** select. Digits 1-9 only, the
+   same as Suite's PIN grid, so this PIN also unlocks the block from Suite.
+3. Write down the 24 words; they are shown twice.
+
+The seed is `SHA256(SHA256(key TRNG || button timings) || main block TRNG)`:
+the key block's hardware random number generator, the timing of every
+button change during PIN entry (in ms and in loop turns), and 32 bytes from
+the main block's TRNG in place of the PC's entropy. Each source can only
+add to the others. The words never leave the key block.
+
+On the bus this is the normal Trezor One `ResetDevice` flow, with the main
+block in the PC's place (`LOCAL_UI(1)` before it tells the key block to take
+the PIN on its own buttons instead of sending a `PinMatrixRequest`). "No",
+or cancelling on the key block, is remembered until that block is removed;
+mismatched PINs are asked again after a few seconds. Afterwards discovery
+shows the block's fingerprint and the main block offers "New 2-of-2 wallet?"
+as usual. Signing or the PC selecting a block cancels a setup in progress.
+
 ## Reaching a key block from the PC (select mode)
 
 Key blocks have no USB of their own: the PC reaches them through the main
@@ -132,6 +160,7 @@ uv run --with embit python ../phylax/tests/test_discovery.py  # blocks snapped o
 uv run --with embit python ../phylax/tests/test_3of3.py       # 3-of-3, and a stranger key block skipped
 uv run --with embit python ../phylax/tests/test_wallets.py    # wallets on every block, main block replaced
 uv run --with embit python ../phylax/tests/test_keyblocks.py  # set up, recover, unlock a key block; PIN mid-signing
+uv run --with embit python ../phylax/tests/test_setup.py      # set up a key block from the main block's buttons, no PC
 ```
 
 Add `--headless` to a single test to run it without emulator windows.
