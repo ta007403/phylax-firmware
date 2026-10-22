@@ -244,6 +244,8 @@ static void start_setup(void) {
 
 // ------------------------------------------------------------ API
 
+bool phylax_setup_running(void) { return state == S_RUNNING; }
+
 bool phylax_setup_busy(void) {
   return state == S_PROMPT || state == S_RUNNING;
 }

@@ -85,6 +85,24 @@ descriptor).
 In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 "Create" automatically (tests only).
 
+## Renaming and deleting wallets from the PC
+
+- `PhylaxSetWalletName(slot, name)` (7707): 1-15 printable ASCII characters,
+  not the name of another saved wallet (case-insensitive). Bad names are
+  refused at once; otherwise the main block shows "Rename wallet <old> to
+  <new>" and the user confirms on its buttons.
+- `PhylaxDeleteWallet(slot)` (7708): "Delete wallet <name> from every
+  block?", confirmed on the main block. Only the record goes (fingerprints
+  and xpubs); the coins stay safe and the seeds can rebuild the descriptor.
+
+Both raise the wallet's generation, so the change reaches every block's copy,
+including blocks attached later with an older copy. A deleted wallet stays
+as a hidden record (same identity, deleted flag) so such a block cannot
+bring it back. The main block does not offer the same blocks as a new wallet
+right after a delete; it does once the blocks change (one removed and put
+back), and the wallet returns in its old slot. Refused while a key block is
+being set up or a transaction is being signed.
+
 ## Setting up a key block with no PC
 
 When a key block without a seed joins, the main block asks **"New key block
@@ -144,7 +162,8 @@ block cancels it and tries again later.
   key block's xpub before the main block starts.
 - The RS485 (USART2, PA1-PA3) transport is not written yet, so device builds
   behave as stock Trezor firmware until it is.
-- No wallet rename or delete from the PC yet.
+- A deleted wallet's hidden record is overwritten when all 8 slots are
+  needed; a block that missed that delete could then bring the wallet back.
 
 ## Tests
 
@@ -161,6 +180,7 @@ uv run --with embit python ../phylax/tests/test_3of3.py       # 3-of-3, and a st
 uv run --with embit python ../phylax/tests/test_wallets.py    # wallets on every block, main block replaced
 uv run --with embit python ../phylax/tests/test_keyblocks.py  # set up, recover, unlock a key block; PIN mid-signing
 uv run --with embit python ../phylax/tests/test_setup.py      # set up a key block from the main block's buttons, no PC
+uv run --with embit python ../phylax/tests/test_rename.py     # rename and delete wallets from the PC, confirmed on the main block
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

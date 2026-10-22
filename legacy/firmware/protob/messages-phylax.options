@@ -5,3 +5,4 @@ PhylaxWalletSummary.name                max_size:17
 PhylaxWalletSummary.fingerprints        max_count:3
 PhylaxWallet.name                       max_size:17
 PhylaxWallet.keys                       max_count:3
+PhylaxSetWalletName.name                max_size:17

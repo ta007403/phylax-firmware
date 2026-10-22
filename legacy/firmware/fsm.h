@@ -61,6 +61,8 @@ void fsm_msgPhylaxGetBlocks(const PhylaxGetBlocks *msg);
 void fsm_msgPhylaxGetWallets(const PhylaxGetWallets *msg);
 void fsm_msgPhylaxGetWallet(const PhylaxGetWallet *msg);
 void fsm_msgPhylaxSelectBlock(const PhylaxSelectBlock *msg);
+void fsm_msgPhylaxSetWalletName(const PhylaxSetWalletName *msg);
+void fsm_msgPhylaxDeleteWallet(const PhylaxDeleteWallet *msg);
 void fsm_msgPing(const Ping *msg);
 void fsm_msgChangePin(const ChangePin *msg);
 void fsm_msgChangeWipeCode(const ChangeWipeCode *msg);

@@ -44,6 +44,8 @@
 // Prompting or running a setup: nothing else may talk to key blocks or use
 // the screen.
 bool phylax_setup_busy(void);
+// The key block is being set up (past the prompt).
+bool phylax_setup_running(void);
 // One step. Called by the wallet poll when it is idle and the screen is
 // free. Returns true if setup uses the screen (prompt, progress, result).
 bool phylax_setup_poll(void);

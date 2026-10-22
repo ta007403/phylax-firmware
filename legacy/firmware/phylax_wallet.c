@@ -76,6 +76,7 @@ static struct {
   uint16_t total;  // writing: record length (0 = delete)
   uint8_t retries;
   uint32_t sent_ms;
+  SlotState writing;  // what the block's copy holds once the write is done
   uint8_t data[PHYLAX_WALLET_RECORD_SIZE];
 } io;
 
@@ -86,7 +87,8 @@ static int fetch_key;      // index into candidate.keys
 static int fetch_net;      // 0 mainnet, 1 testnet
 static uint32_t fetch_ms;
 
-// Fingerprint set the user said "no" to (sorted); asked again if it changes.
+// Fingerprint set the user said "no" to, or whose wallet the PC deleted
+// (sorted); asked again once the blocks change.
 static uint32_t declined[PHYLAX_WALLET_MAX_KEYS];
 static uint8_t declined_n = 0;
 
@@ -109,6 +111,9 @@ static void hex32(char *out, uint32_t v) {
   for (int i = 0; i < 8; i++) out[i] = hexd[(v >> (28 - 4 * i)) & 0xF];
   out[8] = '\0';
 }
+
+// A wallet the user can see and use (not deleted).
+static bool live(const PhylaxWalletRec *w) { return w->used && !w->deleted; }
 
 // A wallet's identity: its n and set of fingerprints (stored sorted).
 static uint32_t wallet_id(const PhylaxWalletRec *w) {
@@ -198,7 +203,7 @@ static bool fp_in(uint32_t fp, const uint32_t *set, int n) {
 }
 
 const PhylaxWalletRec *phylax_wallet_get(int slot, bool *complete) {
-  if (slot < 0 || slot >= PHYLAX_WALLET_SLOTS || !wallets[slot].used) {
+  if (slot < 0 || slot >= PHYLAX_WALLET_SLOTS || !live(&wallets[slot])) {
     return NULL;
   }
   if (complete) {
@@ -321,6 +326,8 @@ static void start_write(int r, int slot) {
   io.retries = 0;
   io.total = wallets[slot].used ? phylax_wallet_encode(&wallets[slot], io.data)
                                 : 0;  // 0: delete the slot
+  // Snapshot: the PC may rename the wallet while the chunks are on the way.
+  io.writing = slot_state(&wallets[slot]);
   send_put();
 }
 
@@ -375,7 +382,7 @@ void phylax_wallet_on_store_reply(const PhylaxFrame *f) {
       send_put();
       return;
     }
-    reps[io.rep].slots[io.slot] = slot_state(&wallets[io.slot]);
+    reps[io.rep].slots[io.slot] = io.writing;
     wstate = W_IDLE;
   }
 }
@@ -551,12 +558,21 @@ static void fetch_next(void) {
   }
 }
 
-static int count_n_of_n(uint8_t n) {
-  int c = 0;
+// Case-insensitive: "Savings" and "savings" are the same name.
+static bool name_taken(const char *name, int except_slot) {
   for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
-    if (wallets[i].used && wallets[i].n == n) c++;
+    if (i == except_slot || !live(&wallets[i])) continue;
+    const char *a = wallets[i].name, *b = name;
+    while (*a && *b) {
+      char ca = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a;
+      char cb = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
+      if (ca != cb) break;
+      a++;
+      b++;
+    }
+    if (*a == '\0' && *b == '\0') return true;
   }
-  return c;
+  return false;
 }
 
 static void start_new_wallet(const uint32_t *fps, const uint8_t *addrs,
@@ -567,18 +583,21 @@ static void start_new_wallet(const uint32_t *fps, const uint8_t *addrs,
     candidate.keys[i].fingerprint = fps[i];
     candidate_addr[i] = addrs[i];
   }
-  // Auto name, e.g. "2-of-2 #1"; the PC can rename it later.
-  int k = count_n_of_n(n) + 1;
-  char *p = candidate.name;
-  *p++ = '0' + n;
-  memcpy(p, "-of-", 4);
-  p += 4;
-  *p++ = '0' + n;
-  memcpy(p, " #", 2);
-  p += 2;
-  if (k >= 10) *p++ = '0' + k / 10;
-  *p++ = '0' + k % 10;
-  *p = '\0';
+  // Auto name, e.g. "2-of-2 #1", the first number not taken (the PC may
+  // have renamed or deleted some); the PC can rename it later.
+  for (int k = 1; k < 100; k++) {
+    char *p = candidate.name;
+    *p++ = '0' + n;
+    memcpy(p, "-of-", 4);
+    p += 4;
+    *p++ = '0' + n;
+    memcpy(p, " #", 2);
+    p += 2;
+    if (k >= 10) *p++ = '0' + k / 10;
+    *p++ = '0' + k % 10;
+    *p = '\0';
+    if (!name_taken(candidate.name, -1)) break;
+  }
   fetch_key = 0;
   fetch_net = 0;
   wstate = W_FETCHING;
@@ -618,9 +637,26 @@ static void prompt_show(void) {
                _("Blocks:"), fp_lines[0], fp_lines[1], fp_lines[2], NULL);
 }
 
+// An empty slot first; else the oldest deleted wallet's hidden record (a
+// block that missed that delete could then bring the wallet back).
 static int free_slot(void) {
   for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
     if (!wallets[i].used) return i;
+  }
+  int best = -1;
+  for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
+    if (wallets[i].deleted &&
+        (best < 0 || wallets[i].generation < wallets[best].generation)) {
+      best = i;
+    }
+  }
+  return best;
+}
+
+// The slot of the wallet with this identity (live or deleted), or -1.
+static int slot_of(uint32_t id) {
+  for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
+    if (wallets[i].used && wallet_id(&wallets[i]) == id) return i;
   }
   return -1;
 }
@@ -635,15 +671,22 @@ static void prompt_answer(bool yes) {
     shown[0] = '\0';
     return;
   }
-  int slot = free_slot();
+  // The same blocks as a deleted wallet: it comes back in its own slot,
+  // newer than its hidden record.
+  candidate.used = true;
+  candidate.generation = 1;
+  int slot = slot_of(wallet_id(&candidate));
+  if (slot >= 0) {
+    candidate.generation = wallets[slot].generation + 1;
+  } else {
+    slot = free_slot();
+  }
   if (slot < 0) {
     wstate = W_IDLE;
     show_status(_("Wallet list is full"), _("(8 wallets)"), NULL);
     return;
   }
   // Becomes the newest copy; the sync writes it to every block.
-  candidate.used = true;
-  candidate.generation = 1;
   wallets[slot] = candidate;
   wstate = W_IDLE;
   shown[0] = '\0';
@@ -676,7 +719,7 @@ static void check_stack(void) {
   int exact = -1;
   for (int i = 0; i < PHYLAX_WALLET_SLOTS && exact < 0; i++) {
     const PhylaxWalletRec *w = &wallets[i];
-    if (!w->used || w->n != n) continue;
+    if (!live(w) || w->n != n) continue;
     bool same = true;
     for (int k = 0; k < w->n; k++) {
       if (!fp_in(w->keys[k].fingerprint, fps, n)) same = false;
@@ -693,6 +736,9 @@ static void check_stack(void) {
   for (int i = 0; was_declined && i < n; i++) {
     if (declined[i] != fps[i]) was_declined = false;
   }
+  // The blocks changed since that "no" (or delete): forget it, so putting
+  // the same blocks back asks again.
+  if (!was_declined) declined_n = 0;
   bool may_try = !retry_pause || (int32_t)(timer_ms() - retry_after_ms) >= 0;
   if (n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
       free_slot() >= 0 && may_try) {
@@ -704,7 +750,7 @@ static void check_stack(void) {
   // 3. A saved wallet missing exactly one block: say which one to attach.
   for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
     const PhylaxWalletRec *w = &wallets[i];
-    if (!w->used) continue;
+    if (!live(w)) continue;
     int missing = 0;
     uint32_t missing_fp = 0;
     for (int k = 0; k < w->n; k++) {
@@ -801,4 +847,69 @@ void phylax_wallet_poll(void) {
     return;
   }
   check_stack();
+}
+
+// ------------------------------------------------------------ PC changes
+
+static const char *check_slot(int slot) {
+  if (!phylax_wallet_ready()) {
+    return _("Wallets still loading, try again");
+  }
+  if (slot < 0 || slot >= PHYLAX_WALLET_SLOTS || !live(&wallets[slot])) {
+    return _("No wallet in that slot");
+  }
+  return NULL;
+}
+
+const char *phylax_wallet_check_rename(int slot, const char *name) {
+  const char *err = check_slot(slot);
+  if (err) return err;
+  size_t len = strlen(name);
+  if (len < 1 || len > PHYLAX_WALLET_NAME_MAX) {
+    return _("Name must be 1 to 15 characters");
+  }
+  bool blank = true;
+  for (size_t i = 0; i < len; i++) {
+    // what the block's font can draw
+    unsigned char c = (unsigned char)name[i];
+    if (c < 0x20 || c > 0x7E) {
+      return _("Name: letters, digits, symbols only");
+    }
+    if (c != ' ') blank = false;
+  }
+  if (blank) return _("Name must not be blank");
+  if (strcmp(wallets[slot].name, name) == 0) {
+    return _("The wallet already has that name");
+  }
+  if (name_taken(name, slot)) {
+    return _("Another wallet has that name");
+  }
+  return NULL;
+}
+
+const char *phylax_wallet_check_delete(int slot) { return check_slot(slot); }
+
+// A prompt on screen was just covered by the PC's confirmation: drop it,
+// it comes back by itself.
+static void drop_prompt(void) {
+  if (wstate == W_PROMPT) wstate = W_IDLE;
+  shown[0] = '\0';
+}
+
+void phylax_wallet_rename(int slot, const char *name) {
+  if (phylax_wallet_check_rename(slot, name) != NULL) return;
+  strlcpy(wallets[slot].name, name, sizeof(wallets[slot].name));
+  wallets[slot].generation++;
+  drop_prompt();
+}
+
+void phylax_wallet_delete(int slot) {
+  if (phylax_wallet_check_delete(slot) != NULL) return;
+  PhylaxWalletRec *w = &wallets[slot];
+  w->deleted = true;
+  w->generation++;
+  // Not offered again at once while its blocks are still attached.
+  declined_n = w->n;
+  for (int i = 0; i < w->n; i++) declined[i] = w->keys[i].fingerprint;
+  drop_prompt();
 }

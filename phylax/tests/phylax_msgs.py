@@ -188,3 +188,30 @@ class PhylaxSelectBlock(protobuf.MessageType):
 
 
 mapping.DEFAULT_MAPPING.register(PhylaxSelectBlock)
+
+
+# --- rename / delete a saved wallet (confirmed on the main block) -------
+
+
+class PhylaxSetWalletName(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7707
+    FIELDS = {
+        1: protobuf.Field("slot", "uint32", repeated=False, required=True),
+        2: protobuf.Field("name", "string", repeated=False, required=True),
+    }
+
+    def __init__(self, *, slot: int, name: str) -> None:
+        self.slot = slot
+        self.name = name
+
+
+class PhylaxDeleteWallet(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7708
+    FIELDS = {1: protobuf.Field("slot", "uint32", repeated=False, required=True)}
+
+    def __init__(self, *, slot: int) -> None:
+        self.slot = slot
+
+
+for _cls in (PhylaxSetWalletName, PhylaxDeleteWallet):
+    mapping.DEFAULT_MAPPING.register(_cls)

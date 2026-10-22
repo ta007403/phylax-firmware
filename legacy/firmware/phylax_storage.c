@@ -7,7 +7,8 @@
  *   0      'P'  magic
  *   1      2    format version
  *   2      n    keys (= threshold)
- *   3      0    script type: wsh(sortedmulti)
+ *   3      0    script type: wsh(sortedmulti); bit 7 set = deleted (a
+ *               hidden record that stops older copies bringing it back)
  *   4..7        generation: raised on every change (e.g. rename), so the
  *               newest copy wins when blocks disagree
  *   8..24       name, NUL padded (17 bytes)
@@ -79,7 +80,7 @@ size_t phylax_wallet_encode(const PhylaxWalletRec *w,
   out[0] = 'P';
   out[1] = 2;
   out[2] = w->n;
-  out[3] = 0;
+  out[3] = w->deleted ? 0x80 : 0;
   put32(out + 4, w->generation);
   strlcpy((char *)out + 8, w->name, PHYLAX_WALLET_NAME_LEN + 1);
   uint8_t *p = out + REC_HEADER;
@@ -97,7 +98,7 @@ size_t phylax_wallet_encode(const PhylaxWalletRec *w,
 
 bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w) {
   memzero(w, sizeof(*w));
-  if (len < REC_HEADER + 2 || in[0] != 'P' || in[1] != 2 || in[3] != 0) {
+  if (len < REC_HEADER + 2 || in[0] != 'P' || in[1] != 2 || (in[3] & 0x7F) != 0) {
     return false;
   }
   uint8_t n = in[2];
@@ -107,6 +108,7 @@ bool phylax_wallet_decode(const uint8_t *in, size_t len, PhylaxWalletRec *w) {
   uint16_t crc = phylax_crc16(in, body, 0xFFFF);
   if ((in[body] | (in[body + 1] << 8)) != crc) return false;
   w->n = n;
+  w->deleted = (in[3] & 0x80) != 0;
   w->generation = get32(in + 4);
   memcpy(w->name, in + 8, PHYLAX_WALLET_NAME_LEN);
   w->name[PHYLAX_WALLET_NAME_LEN] = '\0';

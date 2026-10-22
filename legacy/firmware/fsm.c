@@ -42,6 +42,7 @@
 #include "oled.h"
 #include "phylax_bus.h"
 #include "phylax_relay.h"
+#include "phylax_setup.h"
 #include "phylax_stack.h"
 #include "phylax_wallet.h"
 #include "pinmatrix.h"

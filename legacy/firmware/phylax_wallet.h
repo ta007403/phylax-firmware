@@ -60,6 +60,9 @@ typedef struct {
 
 typedef struct {
   bool used;
+  // Deleted from the PC: kept as a hidden record (same identity, higher
+  // generation) so a block that missed the delete cannot bring it back.
+  bool deleted;
   uint32_t generation;  // raised on every change; newest copy wins
   char name[PHYLAX_WALLET_NAME_LEN + 1];
   uint8_t n;  // number of keys = threshold (n-of-n)
@@ -84,6 +87,17 @@ bool phylax_wallet_ready(void);
 const PhylaxWalletRec *phylax_wallet_get(int slot, bool *complete);
 // Main loop, after the buttons were read: the "New wallet?" prompt.
 void phylax_wallet_ui_poll(void);
+
+// --- changes from the PC (fsm_msg_phylax.h confirms them on screen) ---
+#define PHYLAX_WALLET_NAME_MAX 15  // characters a user may choose
+// NULL if `slot` may be renamed to `name`, else why not.
+const char *phylax_wallet_check_rename(int slot, const char *name);
+// NULL if `slot` may be deleted, else why not.
+const char *phylax_wallet_check_delete(int slot);
+// Apply (after the user confirmed): raises the generation, the sync writes
+// it to every block.
+void phylax_wallet_rename(int slot, const char *name);
+void phylax_wallet_delete(int slot);
 
 // --- every other block: let the main block read and write its copy ---
 void phylax_storage_on_request(const PhylaxFrame *f);

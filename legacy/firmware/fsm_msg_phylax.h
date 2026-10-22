@@ -141,3 +141,83 @@ void fsm_msgPhylaxSelectBlock(const PhylaxSelectBlock *msg) {
     fsm_sendSuccess(_("Key block selected"));
   }
 }
+
+// Shared by rename and delete: the main block's screen is about to show a
+// confirmation. NULL if it may, else why not.
+static const char *phylax_screen_for_pc(void) {
+  if (phylax_setup_running()) return _("Busy setting up a key block");
+  if (phylax_relay_state() != PHYLAX_RELAY_IDLE) return _("Busy signing");
+  phylax_setup_abort();  // a "Set it up?" prompt comes back by itself
+  return NULL;
+}
+
+void fsm_msgPhylaxSetWalletName(const PhylaxSetWalletName *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  int slot = msg->slot < PHYLAX_WALLET_SLOTS ? (int)msg->slot : -1;
+  const char *err = phylax_wallet_check_rename(slot, msg->name);
+  if (err == NULL) err = phylax_screen_for_pc();
+  if (err) {
+    fsm_sendFailure(FailureType_Failure_DataError, err);
+    return;
+  }
+  static char old_name[PHYLAX_WALLET_NAME_LEN + 1];
+  strlcpy(old_name, phylax_wallet_get(slot, NULL)->name, sizeof(old_name));
+
+  layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Rename"), NULL,
+                    _("Rename wallet"), old_name, _("to"), msg->name, NULL,
+                    NULL);
+  if (!protectButton(ButtonRequestType_ButtonRequest_ProtectCall, false)) {
+    fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
+    layoutHome();
+    return;
+  }
+  // The wallets may have changed while the user was reading.
+  err = phylax_wallet_check_rename(slot, msg->name);
+  if (err) {
+    fsm_sendFailure(FailureType_Failure_DataError, err);
+    layoutHome();
+    return;
+  }
+  phylax_wallet_rename(slot, msg->name);
+  fsm_sendSuccess(_("Wallet renamed"));
+  layoutHome();
+}
+
+void fsm_msgPhylaxDeleteWallet(const PhylaxDeleteWallet *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  int slot = msg->slot < PHYLAX_WALLET_SLOTS ? (int)msg->slot : -1;
+  const char *err = phylax_wallet_check_delete(slot);
+  if (err == NULL) err = phylax_screen_for_pc();
+  if (err) {
+    fsm_sendFailure(FailureType_Failure_DataError, err);
+    return;
+  }
+  static char name[PHYLAX_WALLET_NAME_LEN + 1];
+  strlcpy(name, phylax_wallet_get(slot, NULL)->name, sizeof(name));
+
+  layoutDialogSwipe(&bmp_icon_warning, _("Cancel"), _("Delete"), NULL,
+                    _("Delete wallet"), name, _("from every block?"), NULL,
+                    _("Coins stay safe: the"), _("seeds rebuild it."));
+  if (!protectButton(ButtonRequestType_ButtonRequest_ProtectCall, false)) {
+    fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
+    layoutHome();
+    return;
+  }
+  err = phylax_wallet_check_delete(slot);
+  if (err) {
+    fsm_sendFailure(FailureType_Failure_DataError, err);
+    layoutHome();
+    return;
+  }
+  phylax_wallet_delete(slot);
+  fsm_sendSuccess(_("Wallet deleted"));
+  layoutHome();
+}

@@ -128,3 +128,30 @@ message PhylaxWallet {
 message PhylaxSelectBlock {
     required uint32 address = 1;    // bus address from PhylaxBlocks; 1 = main block
 }
+
+/**
+ * Request: Rename a saved wallet. The main block shows the old and new
+ * names and the user confirms on its buttons; then every block's copy is
+ * updated. 1-15 printable ASCII characters, not the name of another saved
+ * wallet (case-insensitive).
+ * @start
+ * @next Success
+ * @next Failure
+ */
+message PhylaxSetWalletName {
+    required uint32 slot = 1;
+    required string name = 2;
+}
+
+/**
+ * Request: Delete a saved wallet from every block, after the user confirms
+ * on the main block. Only the record goes (fingerprints and xpubs): the
+ * coins stay safe, the seeds can always rebuild the descriptor, and
+ * attaching the same blocks offers the wallet again.
+ * @start
+ * @next Success
+ * @next Failure
+ */
+message PhylaxDeleteWallet {
+    required uint32 slot = 1;
+}
