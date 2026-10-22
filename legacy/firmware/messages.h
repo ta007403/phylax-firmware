@@ -72,6 +72,9 @@ bool msg_write_common(char type, uint16_t msg_id, const void *msg_ptr);
 
 void msg_read_tiny(const uint8_t *buf, int len);
 
+// PHYLAX: send an already-encoded message to the host.
+bool msg_write_raw(uint16_t msg_id, const uint8_t *data, uint32_t len);
+
 // PHYLAX: id and encoded body of the host message currently being processed.
 void msg_get_last_in(uint16_t *msg_id, const uint8_t **data, uint32_t *size);
 extern uint8_t msg_tiny[128];

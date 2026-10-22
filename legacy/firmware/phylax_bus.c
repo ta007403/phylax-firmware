@@ -473,6 +473,12 @@ static void block_on_frame(const PhylaxFrame *f) {
       }
       reply_via_bus = true;
       reply_to = f->src;
+      // A key block may never get an Initialize (no USB): open a session
+      // when a new message starts and none is active, as Initialize would.
+      if (f->payload[0] == '?' && f->payload[1] == '#' &&
+          f->payload[2] == '#' && !session_isActive()) {
+        session_startSession(NULL);
+      }
       usbDeliverPacket(f->payload);
       break;
     default:

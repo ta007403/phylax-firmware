@@ -456,6 +456,13 @@ static bool own_xpub(uint32_t coin_type, PhylaxXpub *x) {
 }
 
 static void fetch_failed(void) {
+  // If the key block is waiting for something (a PIN because it was locked
+  // meanwhile, a button, ...), nobody will answer it: cancel it, so it is
+  // free for the user's next request.
+  uint8_t peer = phylax_bus_trezor_peer();
+  if (peer != PHYLAX_ADDR_NONE) {
+    phylax_bus_send_trezor_msg(peer, MessageType_MessageType_Cancel, NULL, 0);
+  }
   phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
   wstate = W_IDLE;
   pause_retries();
@@ -467,7 +474,9 @@ static void on_key_message(uint16_t msg_id, const uint8_t *data,
                            uint32_t len) {
   if (wstate != W_FETCHING) return;
   if (msg_id != MessageType_MessageType_PublicKey) {
-    fetch_failed();  // Failure (locked, wrong path, ...): try again later
+    // PinMatrixRequest (locked), ButtonRequest, Failure, ...: never prompt
+    // the user from the background. Cancelled; tried again later.
+    fetch_failed();
     return;
   }
   static PublicKey pk;
@@ -716,8 +725,9 @@ static void check_stack(void) {
 
 void phylax_wallet_poll(void) {
   // Signing has priority: drop whatever we were doing with a key block.
-  if (phylax_relay_state() != PHYLAX_RELAY_IDLE) {
-    // The relay has taken over the conversation with the key blocks (it set
+  if (phylax_relay_state() != PHYLAX_RELAY_IDLE ||
+      phylax_selected_block() != PHYLAX_ADDR_NONE) {
+    // The relay (or the PC, in select mode) has taken over the conversation with the key blocks (it set
     // its own peer); just step aside. A late PublicKey is ignored by both.
     if (wstate == W_FETCHING || wstate == W_PROMPT) wstate = W_IDLE;
     return;  // a copy being read or written just times out and is retried

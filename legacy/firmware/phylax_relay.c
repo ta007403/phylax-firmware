@@ -75,6 +75,17 @@ static void show_waiting(void) {
                NULL);
 }
 
+static void show_pin_prompt(void) {
+  static char line[24];
+  strlcpy(line, _("of key block  /  on"), sizeof(line));
+  // "of key block 1/2 on"
+  line[13] = '1' + current;
+  line[15] = '0' + target_count;
+  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX multisig"),
+               _("Enter the PIN"), line, _("the PC. Its keypad is"),
+               _("on its own screen."), NULL);
+}
+
 // Send the saved SignTx to the current key block.
 static bool send_signtx(void) {
   static uint8_t buf[SignTx_size];
@@ -257,8 +268,96 @@ void phylax_relay_on_key_message(uint16_t msg_id, const uint8_t *data,
       layoutHome();
       return;
     }
+    case MessageType_MessageType_PinMatrixRequest:
+      show_pin_prompt();
+      msg_write_raw(msg_id, data, len);  // the PC shows its PIN grid
+      return;
     default:
-      phylax_relay_on_key_error(_("Unexpected message from key block"));
+      // Anything else the key block asks (e.g. a passphrase) goes to the PC
+      // as is; the PC's answer comes back through
+      // phylax_intercept_host_message.
+      msg_write_raw(msg_id, data, len);
       return;
   }
+}
+
+// ------------------------------------------------------------ select mode
+
+static uint8_t selected = PHYLAX_ADDR_NONE;
+
+uint8_t phylax_selected_block(void) { return selected; }
+
+static void on_selected_message(uint16_t msg_id, const uint8_t *data,
+                                uint32_t len) {
+  if (selected == PHYLAX_ADDR_NONE) return;
+  msg_write_raw(msg_id, data, len);  // everything goes to the PC unchanged
+}
+
+static bool in_stack(uint8_t addr) {
+  const PhylaxStackEntry *e;
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->addr == addr && e->hello.kind == PHYLAX_KIND_KEY) return true;
+  }
+  return false;
+}
+
+bool phylax_select_block(uint8_t addr) {
+  if (addr == PHYLAX_ADDR_NONE || addr == PHYLAX_ADDR_MAIN) {
+    if (selected != PHYLAX_ADDR_NONE) {
+      phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
+    }
+    selected = PHYLAX_ADDR_NONE;
+    return true;
+  }
+  if (state != PHYLAX_RELAY_IDLE || !in_stack(addr)) return false;
+  selected = addr;
+  phylax_bus_set_trezor_peer(addr, on_selected_message);
+  static char line[24];
+  strlcpy(line, _("Key block 0x  "), sizeof(line));
+  static const char hexd[] = "0123456789ABCDEF";
+  line[12] = hexd[addr >> 4];
+  line[13] = hexd[addr & 0xF];
+  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"),
+               _("The PC is talking to"), line, _("through this block."),
+               _("Use the key block's"), _("own screen and buttons."));
+  return true;
+}
+
+bool phylax_passthrough_active(void) {
+  return phylax_role() == PHYLAX_ROLE_MAIN &&
+         (selected != PHYLAX_ADDR_NONE || state == PHYLAX_RELAY_PASS1);
+}
+
+bool phylax_intercept_host_message(uint16_t msg_id, const uint8_t *data,
+                                   uint32_t len) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) return false;
+
+  if (selected != PHYLAX_ADDR_NONE &&
+      msg_id != MessageType_MessageType_PhylaxSelectBlock) {
+    if (!in_stack(selected)) {
+      phylax_select_block(PHYLAX_ADDR_MAIN);
+      fsm_sendFailure(FailureType_Failure_ProcessError,
+                      _("Key block disconnected"));
+      layoutHome();
+      return true;
+    }
+    phylax_bus_send_trezor_msg(selected, msg_id, data, len);
+    return true;
+  }
+
+  if (state == PHYLAX_RELAY_PASS1) {
+    if (msg_id == MessageType_MessageType_Initialize) {
+      // The PC starts over: stop the key block too, then handle it here.
+      phylax_bus_send_trezor_msg(target(), MessageType_MessageType_Cancel,
+                                 NULL, 0);
+      phylax_relay_reset();
+      return false;
+    }
+    // TxAck, PinMatrixAck, PassphraseAck, Cancel, ...: for the key block.
+    if (!phylax_bus_send_trezor_msg(target(), msg_id, data, len)) {
+      phylax_relay_on_key_error(_("Key block unreachable"));
+    }
+    return true;
+  }
+  return false;
 }

@@ -84,6 +84,30 @@ descriptor).
 In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 "Create" automatically (tests only).
 
+## Reaching a key block from the PC (select mode)
+
+Key blocks have no USB of their own: the PC reaches them through the main
+block. `PhylaxSelectBlock(address)` (message 7706) puts the main block in
+pass-through mode: every PC message goes to that key block unchanged and
+every answer comes back, so the normal Trezor One flows work on it:
+
+- set up: it creates its own seed and shows the words on its own screen
+- recover: words typed on the PC, asked in a shuffled order with fake words
+- set or change its PIN, wipe it, lock it
+- unlock it: any PIN-protected request, e.g. reading its account key with
+  `GetPublicKey` (Trezor One's `Ping` does not check the PIN)
+
+The PC's PIN grid is blank: the user clicks the positions shown on the key
+block's own scrambled keypad. `PhylaxSelectBlock(1)` returns to the main
+block. A wiped block gets a new id (Trezor renews it on wipe), so it shows
+up again as a new block, at a new address.
+
+During signing, a locked key block asks for its PIN through the main block:
+the PC shows its grid, the main block says which key block's keypad to look
+at. The main block's own background requests (fetching xpubs for a new
+wallet) never prompt the user: if a key block asks for anything, the main
+block cancels it and tries again later.
+
 ## Known limits
 
 - A key block must not be driven over USB and the bus at the same time: it
@@ -107,6 +131,7 @@ uv run --with embit python ../phylax/tests/test_timeout.py    # 10 s timeout, sl
 uv run --with embit python ../phylax/tests/test_discovery.py  # blocks snapped on and off, fingerprints
 uv run --with embit python ../phylax/tests/test_3of3.py       # 3-of-3, and a stranger key block skipped
 uv run --with embit python ../phylax/tests/test_wallets.py    # wallets on every block, main block replaced
+uv run --with embit python ../phylax/tests/test_keyblocks.py  # set up, recover, unlock a key block; PIN mid-signing
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

@@ -114,3 +114,17 @@ message PhylaxWallet {
     repeated PhylaxWalletKey keys = 4;          // sorted by fingerprint
     optional bool complete = 5;
 }
+
+/**
+ * Request: Talk to one block of the stack through the main block.
+ * While a key block is selected, the main block passes every message from
+ * the PC to it unchanged and every answer back, so the normal Trezor flows
+ * (set up, recover, change PIN, wipe, ...) work on a key block that has no
+ * USB of its own. Address 1 (the main block) ends it.
+ * @start
+ * @next Success
+ * @next Failure
+ */
+message PhylaxSelectBlock {
+    required uint32 address = 1;    // bus address from PhylaxBlocks; 1 = main block
+}

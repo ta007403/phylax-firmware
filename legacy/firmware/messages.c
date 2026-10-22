@@ -24,6 +24,7 @@
 #include "gettext.h"
 #include "memzero.h"
 #include "messages.h"
+#include "phylax_relay.h"
 #include "trezor.h"
 #include "util.h"
 
@@ -215,6 +216,23 @@ bool msg_write_common(char type, uint16_t msg_id, const void *msg_ptr) {
   return status;
 }
 
+// PHYLAX: send an already-encoded message (from a key block) to the host.
+bool msg_write_raw(uint16_t msg_id, const uint8_t *data, uint32_t len) {
+  msg_out_append('#');
+  msg_out_append('#');
+  msg_out_append((msg_id >> 8) & 0xFF);
+  msg_out_append(msg_id & 0xFF);
+  msg_out_append((len >> 24) & 0xFF);
+  msg_out_append((len >> 16) & 0xFF);
+  msg_out_append((len >> 8) & 0xFF);
+  msg_out_append(len & 0xFF);
+  for (uint32_t i = 0; i < len; i++) {
+    msg_out_append(data[i]);
+  }
+  msg_out_pad();
+  return true;
+}
+
 enum {
   READSTATE_IDLE,
   READSTATE_READING,
@@ -239,6 +257,11 @@ void msg_process(char type, uint16_t msg_id, const pb_msgdesc_t *fields,
     last_in_id = msg_id;
     last_in_data = msg_encoded;
     last_in_size = msg_encoded_size;
+    // PHYLAX main block: a message meant for a key block is passed on
+    // unchanged instead of being handled here.
+    if (phylax_intercept_host_message(msg_id, msg_encoded, msg_encoded_size)) {
+      return;
+    }
   }
   memzero(msg_decoded, sizeof(msg_decoded));
   pb_istream_t stream = pb_istream_from_buffer(msg_encoded, msg_encoded_size);
@@ -270,7 +293,9 @@ void msg_read_common(char type, const uint8_t *buf, uint32_t len) {
         ((uint32_t)buf[5] << 24) + (buf[6] << 16) + (buf[7] << 8) + buf[8];
 
     fields = MessageFields(type, 'i', msg_id);
-    if (!fields) {  // unknown message
+    // PHYLAX: messages the main block never handles itself (ButtonAck,
+    // PinMatrixAck, ...) may still be meant for a key block it relays to.
+    if (!fields && !(type == 'n' && phylax_passthrough_active())) {
       fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
                       _("Unknown message"));
       return;
@@ -298,7 +323,16 @@ void msg_read_common(char type, const uint8_t *buf, uint32_t len) {
   }
 
   if (msg_pos >= msg_encoded_size) {
-    msg_process(type, msg_id, fields, msg_encoded, msg_encoded_size);
+    if (fields == NULL) {
+      // only reachable while passing messages through to a key block
+      if (!phylax_intercept_host_message(msg_id, msg_encoded,
+                                         msg_encoded_size)) {
+        fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                        _("Unknown message"));
+      }
+    } else {
+      msg_process(type, msg_id, fields, msg_encoded, msg_encoded_size);
+    }
     msg_pos = 0;
     read_state = READSTATE_IDLE;
   }

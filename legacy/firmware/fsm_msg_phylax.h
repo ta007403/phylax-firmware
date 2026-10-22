@@ -122,3 +122,22 @@ void fsm_msgPhylaxGetWallet(const PhylaxGetWallet *msg) {
   }
   msg_write(MessageType_MessageType_PhylaxWallet, resp);
 }
+
+void fsm_msgPhylaxSelectBlock(const PhylaxSelectBlock *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  if (msg->address > 0xFF || !phylax_select_block((uint8_t)msg->address)) {
+    fsm_sendFailure(FailureType_Failure_DataError,
+                    _("No key block at that address"));
+    return;
+  }
+  if (phylax_selected_block() == PHYLAX_ADDR_NONE) {
+    layoutHome();
+    fsm_sendSuccess(_("Main block selected"));
+  } else {
+    fsm_sendSuccess(_("Key block selected"));
+  }
+}

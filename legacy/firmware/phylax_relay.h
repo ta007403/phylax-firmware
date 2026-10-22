@@ -79,6 +79,23 @@ void phylax_relay_on_key_message(uint16_t msg_id, const uint8_t *data,
                                  uint32_t len);
 void phylax_relay_on_key_error(const char *text);
 
+// --- select-block mode (PhylaxSelectBlock) ---
+// Pass every PC message to the key block at `addr` and every answer back.
+// PHYLAX_ADDR_MAIN (or NONE) ends it. Returns false if addr is not a key block
+// in the stack.
+bool phylax_select_block(uint8_t addr);
+uint8_t phylax_selected_block(void);  // PHYLAX_ADDR_NONE when not selected
+
+// The main block is passing PC messages to a key block (select mode or
+// signing pass 1).
+bool phylax_passthrough_active(void);
+
+// Called for every PC message before it is handled (messages.c). Returns
+// true if the message was passed to a key block (select mode, or signing
+// pass 1) and must not be handled by the main block.
+bool phylax_intercept_host_message(uint16_t msg_id, const uint8_t *data,
+                                   uint32_t len);
+
 // Provided by fsm.c: start the main block's own signing (pass 2) of the
 // SignTx given to phylax_relay_begin.
 void fsm_phylaxStartOwnSigning(void);

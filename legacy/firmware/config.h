@@ -141,6 +141,7 @@ bool config_unlock(const char *pin);
 bool config_hasPin(void);
 bool config_changePin(const char *new_pin);
 bool session_isUnlocked(void);
+bool session_isActive(void);
 
 bool config_hasWipeCode(void);
 bool config_changeWipeCode(const char *pin, const char *wipe_code);

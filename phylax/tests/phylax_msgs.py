@@ -174,3 +174,17 @@ class PhylaxWallet(protobuf.MessageType):
 
 for _cls in (PhylaxGetWallets, PhylaxWallets, PhylaxGetWallet, PhylaxWallet):
     mapping.DEFAULT_MAPPING.register(_cls)
+
+
+# --- select a block (pass-through to a key block) ----------------------
+
+
+class PhylaxSelectBlock(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7706
+    FIELDS = {1: protobuf.Field("address", "uint32", repeated=False, required=True)}
+
+    def __init__(self, *, address: int) -> None:
+        self.address = address
+
+
+mapping.DEFAULT_MAPPING.register(PhylaxSelectBlock)

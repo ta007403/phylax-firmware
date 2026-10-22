@@ -911,6 +911,10 @@ void session_endCurrentSession(void) {
 
 bool session_isUnlocked(void) { return sectrue == storage_is_unlocked(); }
 
+// PHYLAX: a key block is reached over the bus and may never see an
+// Initialize; the bus layer opens a session for it when needed.
+bool session_isActive(void) { return activeSessionCache != NULL; }
+
 bool config_isInitialized(void) {
   bool initialized = false;
   config_get_bool(KEY_INITIALIZED, &initialized);
