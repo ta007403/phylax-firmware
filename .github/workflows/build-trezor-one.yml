@@ -17,12 +17,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # PHYLAX role of the build: stock = plain Trezor One behaviour,
+        # main = main block (USB to the PC), key = key block.
+        role: [stock, main, key]
+    env:
+      PHYLAX_BUILD_ROLE: ${{ matrix.role }}
 
     steps:
       - name: Get the code from this fork
         uses: actions/checkout@v5
 
-      - name: Build Bitcoin-only Trezor One firmware
+      - name: Build Bitcoin-only Trezor One firmware (${{ matrix.role }})
         # Trezor's own build script. It builds inside Docker from the
         # code checked out above, at the branch this run is for.
         #   --models T1B1  -> Trezor One only (skip newer models)
@@ -45,7 +53,7 @@ jobs:
       - name: Upload firmware
         uses: actions/upload-artifact@v6
         with:
-          name: trezor-one-bitcoinonly-${{ github.ref_name }}-${{ github.sha }}
+          name: trezor-one-bitcoinonly-${{ matrix.role }}-${{ github.ref_name }}-${{ github.sha }}
           path: |
             build/legacy-T1B1-bitcoinonly/firmware/
             build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
