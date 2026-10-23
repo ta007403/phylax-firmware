@@ -34,7 +34,7 @@ that does nothing else, or at least never put coins on those three addresses.
 
 1. Connect the release Trezor One and run (from the repository root):
 
-       uv run --with trezor python phylax/release/phylax_sign.py keys
+       uv run --with ecdsa python phylax/release/phylax_sign.py keys
 
    It writes `legacy/phylax_fw_keys_release.h` (public keys only).
 2. Commit and push that file. From then on the CI run builds, for the
@@ -51,7 +51,7 @@ that does nothing else, or at least never put coins on those three addresses.
 2. Sign each `firmware.bin` (the Trezor shows the header hash twice; check it
    against the first line the script prints):
 
-       uv run --with trezor --with ecdsa python phylax/release/phylax_sign.py sign firmware.bin
+       uv run --with ecdsa python phylax/release/phylax_sign.py sign firmware.bin
 
    The script checks the result against the release keys before it writes
    `firmware.signed.bin`. `phylax_sign.py verify FILE` checks a file again.

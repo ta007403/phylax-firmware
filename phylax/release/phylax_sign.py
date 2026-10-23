@@ -25,9 +25,9 @@ so they come back from that Trezor's 24 words. Commands:
                        the public "table ... advance" test mnemonic) instead:
                        for emulator and host tests only.
 
-Run from anywhere with trezorlib installed, e.g.
+Run from the repository root with the repository's own trezorlib:
 
-    uv run --with trezor python phylax/release/phylax_sign.py keys
+    uv run --with ecdsa python phylax/release/phylax_sign.py keys
 """
 
 from __future__ import annotations
@@ -161,9 +161,15 @@ def verify(fw: bytes, keys: list[bytes]) -> list[int]:
 
 
 def client():
+    """The connected Trezor; its PIN is typed here, using the grid shown on
+    the Trezor (like trezorctl)."""
     from trezorlib.client import get_default_client
+    from trezorlib.ui import ClickUI
 
-    return get_default_client()
+    ui = ClickUI()
+    return get_default_client(
+        "phylax-sign", button_callback=ui.button_request, pin_callback=ui.get_pin
+    )
 
 
 def public_keys(session) -> list[bytes]:
