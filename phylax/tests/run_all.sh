@@ -10,13 +10,13 @@ headless="--headless"
 [ "${1:-}" = "--show" ] && headless=""
 failed=0
 for t in spike2a spike2b test_timeout test_discovery test_3of3 test_wallets test_keyblocks test_setup test_rename \
-  test_entropy:coin test_entropy:dice test_entropy:short; do
+  test_entropy:coin test_entropy:dice test_entropy:short test_fw_signatures; do
   printf '%-20s ' "$t"
   name=${t%%:*}
   mode=""
   [ "$name" != "$t" ] && mode="--mode ${t#*:}"
   # shellcheck disable=SC2086
-  if out=$(timeout 600 uv run --with embit python ../phylax/tests/$name.py $headless $mode 2>&1); then
+  if out=$(timeout 600 uv run --with embit --with ecdsa python ../phylax/tests/$name.py $headless $mode 2>&1); then
     echo "PASSED"
   else
     echo "FAILED"
