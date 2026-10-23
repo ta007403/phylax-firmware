@@ -208,7 +208,7 @@ static void show_coin(void) {
 }
 
 static const char *dice_label(int i) {
-  static const char *const labels[DICE_ITEMS] = {"1", "2", "3",   "4",
+  static const char *const labels[DICE_ITEMS] = {"1", "2", "3",  "4",
                                                  "5", "6", "DEL"};
   return labels[(i + DICE_ITEMS) % DICE_ITEMS];
 }
