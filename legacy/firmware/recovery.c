@@ -495,10 +495,17 @@ void recovery_init(uint32_t _word_count, bool passphrase_protection,
   dry_run = _dry_run;
 
   if (!dry_run) {
+#if PHYLAX_DEVICE_FIRMWARE
+    // PHYLAX Blocks: no Trezor terms of service on PHYLAX blocks
+    layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
+                      _("Do you really want to"), _("recover the device?"),
+                      NULL, NULL, NULL, NULL);
+#else
     layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
                       _("Do you really want to"), _("recover the device?"),
                       NULL, _("By continuing you"), _("agree to trezor.io/tos"),
                       NULL);
+#endif
     if (!protectButton(ButtonRequestType_ButtonRequest_ProtectCall, false)) {
       fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
       layoutHome();
