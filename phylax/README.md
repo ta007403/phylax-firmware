@@ -144,6 +144,24 @@ mismatched PINs are asked again after a few seconds. Afterwards discovery
 shows the block's fingerprint and the main block offers "New 2-of-2 wallet?"
 as usual. Signing or the PC selecting a block cancels a setup in progress.
 
+### Your own randomness when a block creates its own wallet
+
+The same two questions (and the same coin and dice screens) also come up when
+a PHYLAX block creates **its own** wallet from the PC: the main block, or a key
+block set up from Suite in select mode. After "Create a new wallet?" and the
+PIN, the block asks "Add your own randomness?"; meanwhile the PC just waits
+(it got a normal `ButtonRequest`, so Suite shows its "follow the device"
+screen). Nothing changes in Suite.
+
+The hashed flips or rolls are mixed into the block's own random bytes in every
+round: `int_entropy = SHA256(SHA256(TRNG || button timings) || your digest)`,
+and the seed is `SHA256(int_entropy || PC entropy)` as on any Trezor One.
+Suite's entropy check still passes, because what the block commits to and
+later reveals is the already-mixed value. Cancelling on the PC while the block
+asks stops the wallet creation and wipes the flips. A key block being set up
+by the main block is not asked twice (the main block asked already). Stock
+firmware builds never ask.
+
 ## Reaching a key block from the PC (select mode)
 
 Key blocks have no USB of their own: the PC reaches them through the main
@@ -195,6 +213,8 @@ uv run --with embit python ../phylax/tests/test_wallets.py    # wallets on every
 uv run --with embit python ../phylax/tests/test_keyblocks.py  # set up, recover, unlock a key block; PIN mid-signing
 uv run --with embit python ../phylax/tests/test_setup.py      # set up a key block from the main block's buttons, no PC
 uv run --with embit python ../phylax/tests/test_rename.py     # rename and delete wallets from the PC, confirmed on the main block
+uv run --with embit python ../phylax/tests/test_entropy.py --mode coin        # coin/dice when setting up a key block
+uv run --with embit python ../phylax/tests/test_reset_entropy.py --mode coin  # coin/dice when the PC creates a wallet
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

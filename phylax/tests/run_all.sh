@@ -10,7 +10,9 @@ headless="--headless"
 [ "${1:-}" = "--show" ] && headless=""
 failed=0
 for t in spike2a spike2b test_timeout test_discovery test_3of3 test_wallets test_keyblocks test_setup test_rename \
-  test_entropy:coin test_entropy:dice test_entropy:short test_fw_signatures; do
+  test_entropy:coin test_entropy:dice test_entropy:short \
+  test_reset_entropy:coin test_reset_entropy:dice test_reset_entropy:skip test_reset_entropy:short \
+  test_reset_entropy:cancel test_reset_entropy:noscript test_fw_signatures; do
   printf '%-20s ' "$t"
   name=${t%%:*}
   mode=""

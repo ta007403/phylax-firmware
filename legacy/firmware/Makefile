@@ -52,6 +52,7 @@ OBJS += phylax_storage.o
 OBJS += phylax_wallet.o
 OBJS += phylax_setup.o
 OBJS += phylax_pin.o
+OBJS += phylax_userent.o
 OBJS += config.o
 OBJS += trezor.o
 OBJS += pinmatrix.o

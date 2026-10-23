@@ -23,6 +23,7 @@
 #include "phylax_bus.h"
 #include "phylax_pin.h"
 #include "phylax_stack.h"
+#include "phylax_userent.h"
 #include "rand.h"
 #include "rng.h"
 #include "sha2.h"
@@ -33,43 +34,17 @@
 
 typedef enum {
   S_IDLE,
-  S_PROMPT,    // "New key block found. Set it up?"
-  S_ENT_ASK,   // "Add your own randomness?"  Skip / Add
-  S_ENT_KIND,  // "Coin flips or dice?"       Coin / Dice
-  S_ENT_COIN,  // 256 coin flips
-  S_ENT_DICE,  // 99 dice rolls
-  S_RUNNING,   // the user follows the key block's screen
-  S_RESULT,    // "Key block is ready." / why it stopped
+  S_PROMPT,   // "New key block found. Set it up?"
+  S_ENT,      // your own randomness: coin flips or dice (phylax_userent.c)
+  S_RUNNING,  // the user follows the key block's screen
+  S_RESULT,   // "Key block is ready." / why it stopped
 } SetupState;
-
-// Your own randomness: 256 coin flips (256 bits) or 99 dice rolls
-// (99 x log2(6) = 255.9 bits), so it is full strength on its own. It is
-// hashed and mixed into the main block's random bytes, never replacing them.
-#define COIN_FLIPS 256
-#define DICE_ROLLS 99
-#define DICE_UNDO 6  // carousel: 1..6, DEL
-#define DICE_ITEMS 7
 
 static SetupState state = S_IDLE;
 static uint8_t target_uid[PHYLAX_UID_SIZE];
 static uint8_t target_addr = PHYLAX_ADDR_NONE;
 static uint32_t result_until_ms = 0;
 static uint32_t retry_after_ms = 0;
-
-// The flips or rolls being entered (H/T or '1'..'6'), and once complete their
-// SHA-256, mixed into the EntropyAck.
-static CONFIDENTIAL char user_inputs[COIN_FLIPS + 1];
-static size_t user_count = 0;
-static int dice_pos = 0;
-static CONFIDENTIAL uint8_t user_digest[SHA256_DIGEST_LENGTH];
-static bool have_user_entropy = false;
-
-static void forget_user_entropy(void) {
-  memzero(user_inputs, sizeof(user_inputs));
-  memzero(user_digest, sizeof(user_digest));
-  user_count = 0;
-  have_user_entropy = false;
-}
 
 // Blocks the user said "no" to, until they leave the stack.
 static uint8_t declined[PHYLAX_STACK_MAX][PHYLAX_UID_SIZE];
@@ -129,7 +104,9 @@ static void show_state(void);
 // Setup no longer owns the screen: what is shown counts as a plain dialog,
 // so the wallet logic may replace it as before.
 static void release_screen(void) {
-  if (layoutLast == show_state) layoutLast = layoutDialog;
+  if (layoutLast == show_state || layoutLast == phylax_userent_redraw) {
+    layoutLast = layoutDialog;
+  }
 }
 
 static void show_prompt(void) {
@@ -138,100 +115,6 @@ static void show_prompt(void) {
                _("You will choose a PIN"), _("and write down 24"),
                _("words on the block."));
   layoutLast = show_state;
-}
-
-static void show_ent_ask(void) {
-  layoutDialog(&bmp_icon_question, _("Skip"), _("Add"), NULL, _("Add your own"),
-               _("randomness?"), NULL, _("Coin flips or dice,"),
-               _("added to the seed."), NULL);
-  layoutLast = show_state;
-}
-
-static void show_ent_kind(void) {
-  layoutDialog(&bmp_icon_question, _("Coin"), _("Dice"), NULL,
-               _("Coin flips or dice?"), NULL, _("256 flips of a real coin"),
-               _("or 99 rolls of a"), _("real 6-sided die."), NULL);
-  layoutLast = show_state;
-}
-
-// The last inputs, newest on the right, as many as fit.
-static void draw_history(int y) {
-  const size_t fit = 20;
-  size_t from = user_count > fit ? user_count - fit : 0;
-  char line[21];
-  size_t n = user_count - from;
-  memcpy(line, user_inputs + from, n);
-  line[n] = '\0';
-  oledDrawStringCenter(OLED_WIDTH / 2, y, n ? line : "-", FONT_STANDARD);
-  memzero(line, sizeof(line));
-}
-
-static void draw_count(const char *what, size_t total) {
-  char title[24];
-  // "Flip 37 of 256" / "Roll 12 of 99"
-  size_t i = 0;
-  for (const char *c = what; *c && i < sizeof(title) - 1; c++) title[i++] = *c;
-  char num[12];
-  int k = 0;
-  size_t v = user_count + 1;
-  do {
-    num[k++] = (char)('0' + v % 10);
-    v /= 10;
-  } while (v && k < 11);
-  while (k && i < sizeof(title) - 1) title[i++] = num[--k];
-  const char *of = " of ";
-  for (const char *c = of; *c && i < sizeof(title) - 1; c++) title[i++] = *c;
-  v = total;
-  k = 0;
-  do {
-    num[k++] = (char)('0' + v % 10);
-    v /= 10;
-  } while (v && k < 11);
-  while (k && i < sizeof(title) - 1) title[i++] = num[--k];
-  title[i] = '\0';
-  oledDrawStringCenter(OLED_WIDTH / 2, 0, title, FONT_STANDARD);
-}
-
-static void show_coin(void) {
-  layoutLast = show_state;  // not the home screen
-  oledClear();
-  draw_count(_("Flip "), COIN_FLIPS);
-  draw_history(12);
-  oledDrawStringCenter(OLED_WIDTH / 2, 26, _("Flip a real coin."),
-                       FONT_STANDARD);
-  oledDrawString(0, 40, _("< heads"), FONT_STANDARD);
-  oledDrawStringRight(OLED_WIDTH - 1, 40, _("tails >"), FONT_STANDARD);
-  oledDrawStringCenter(OLED_WIDTH / 2, OLED_HEIGHT - 8,
-                       user_count ? _("both = undo") : _("both = cancel"),
-                       FONT_STANDARD);
-  oledRefresh();
-}
-
-static const char *dice_label(int i) {
-  static const char *const labels[DICE_ITEMS] = {"1", "2", "3",  "4",
-                                                 "5", "6", "DEL"};
-  return labels[(i + DICE_ITEMS) % DICE_ITEMS];
-}
-
-static void show_dice(void) {
-  layoutLast = show_state;  // not the home screen
-  oledClear();
-  draw_count(_("Roll "), DICE_ROLLS);
-  draw_history(12);
-  const int y = 28;
-  oledDrawString(0, y + 4, "<", FONT_STANDARD);
-  oledDrawStringRight(OLED_WIDTH - 1, y + 4, ">", FONT_STANDARD);
-  oledDrawString(12, y + 4, dice_label(dice_pos - 1), FONT_STANDARD);
-  oledDrawStringRight(OLED_WIDTH - 13, y + 4, dice_label(dice_pos + 1),
-                      FONT_STANDARD);
-  const char *cur = dice_pos == DICE_UNDO && user_count == 0
-                        ? _("BACK")
-                        : dice_label(dice_pos);
-  oledDrawStringCenter(OLED_WIDTH / 2, y, cur, FONT_STANDARD | FONT_DOUBLE);
-  oledInvert(OLED_WIDTH / 2 - 26, y - 2, OLED_WIDTH / 2 + 25, y + 16);
-  oledDrawStringCenter(OLED_WIDTH / 2, OLED_HEIGHT - 8, _("both = select"),
-                       FONT_STANDARD);
-  oledRefresh();
 }
 
 static void show_running(void) {
@@ -249,17 +132,8 @@ static void show_state(void) {
     case S_PROMPT:
       show_prompt();
       break;
-    case S_ENT_ASK:
-      show_ent_ask();
-      break;
-    case S_ENT_KIND:
-      show_ent_kind();
-      break;
-    case S_ENT_COIN:
-      show_coin();
-      break;
-    case S_ENT_DICE:
-      show_dice();
+    case S_ENT:
+      phylax_userent_redraw();
       break;
     case S_RUNNING:
       show_running();
@@ -280,7 +154,7 @@ static void show_result(const char *line1, const char *line2) {
 // ------------------------------------------------------------ the conversation
 
 static void end_conversation(bool cancel_key) {
-  forget_user_entropy();
+  phylax_userent_forget();
   if (target_addr != PHYLAX_ADDR_NONE) {
     if (cancel_key) {
       phylax_bus_send_trezor_msg(target_addr, MessageType_MessageType_Cancel,
@@ -339,15 +213,8 @@ static void on_key_message(uint16_t msg_id, const uint8_t *data, uint32_t len) {
       // Button timings while the user was choosing, then the user's own
       // coin flips or dice rolls: SHA256(random || flips). Both can only add.
       phylax_entropy_mix(ack.entropy.bytes);
-      if (have_user_entropy) {
-        SHA256_CTX ctx;
-        sha256_Init(&ctx);
-        sha256_Update(&ctx, ack.entropy.bytes, 32);
-        sha256_Update(&ctx, user_digest, sizeof(user_digest));
-        sha256_Final(&ctx, ack.entropy.bytes);
-        memzero(&ctx, sizeof(ctx));
-        forget_user_entropy();
-      }
+      phylax_userent_mix(ack.entropy.bytes);
+      phylax_userent_forget();
       pb_ostream_t stream = pb_ostream_from_buffer(buf, sizeof(buf));
       bool ok = pb_encode(&stream, EntropyAck_fields, &ack);
       memzero(&ack, sizeof(ack));
@@ -421,10 +288,7 @@ static void start_setup(void) {
 
 bool phylax_setup_running(void) { return state == S_RUNNING; }
 
-static bool choosing(void) {
-  return state == S_ENT_ASK || state == S_ENT_KIND || state == S_ENT_COIN ||
-         state == S_ENT_DICE;
-}
+static bool choosing(void) { return state == S_ENT; }
 
 bool phylax_setup_busy(void) {
   return state == S_PROMPT || choosing() || state == S_RUNNING;
@@ -432,115 +296,19 @@ bool phylax_setup_busy(void) {
 
 void phylax_setup_abort(void) {
   if (state == S_RUNNING) end_conversation(true);
-  forget_user_entropy();
+  phylax_userent_forget();
   if (state != S_IDLE) state = S_IDLE;
   release_screen();
 }
 
-static void ask_entropy(void) {
-  forget_user_entropy();
-  state = S_ENT_ASK;
-  show_ent_ask();
-}
-
 static void answer(bool yes) {
   if (yes) {
-    ask_entropy();
+    state = S_ENT;
+    phylax_userent_begin();
   } else {
     decline(target_uid);
     state = S_IDLE;
     release_screen();
-  }
-}
-
-// The flips or rolls are complete: keep only their hash.
-static void finish_entropy(void) {
-  static const char tag_coin[] = "PHYLAX coin flips v1";
-  static const char tag_dice[] = "PHYLAX dice rolls v1";
-  SHA256_CTX ctx;
-  sha256_Init(&ctx);
-  if (state == S_ENT_COIN) {
-    sha256_Update(&ctx, (const uint8_t *)tag_coin, sizeof(tag_coin) - 1);
-  } else {
-    sha256_Update(&ctx, (const uint8_t *)tag_dice, sizeof(tag_dice) - 1);
-  }
-  sha256_Update(&ctx, (const uint8_t *)user_inputs, user_count);
-  sha256_Final(&ctx, user_digest);
-  memzero(&ctx, sizeof(ctx));
-  memzero(user_inputs, sizeof(user_inputs));
-  user_count = 0;
-  have_user_entropy = true;
-  start_setup();
-}
-
-static void coin_event(PhylaxButtonEvent e) {
-  if (e == PHYLAX_BUTTON_BOTH) {
-    if (user_count == 0) {
-      ask_entropy();
-      return;
-    }
-    user_inputs[--user_count] = '\0';
-  } else {
-    user_inputs[user_count++] = e == PHYLAX_BUTTON_LEFT ? 'H' : 'T';
-    if (user_count == COIN_FLIPS) {
-      finish_entropy();
-      return;
-    }
-  }
-  show_coin();
-}
-
-static void dice_event(PhylaxButtonEvent e) {
-  if (e == PHYLAX_BUTTON_LEFT) {
-    dice_pos = (dice_pos + DICE_ITEMS - 1) % DICE_ITEMS;
-  } else if (e == PHYLAX_BUTTON_RIGHT) {
-    dice_pos = (dice_pos + 1) % DICE_ITEMS;
-  } else if (dice_pos == DICE_UNDO) {
-    if (user_count == 0) {
-      ask_entropy();
-      return;
-    }
-    user_inputs[--user_count] = '\0';
-  } else {
-    user_inputs[user_count++] = (char)('1' + dice_pos);
-    if (user_count == DICE_ROLLS) {
-      finish_entropy();
-      return;
-    }
-  }
-  show_dice();
-}
-
-static void choosing_event(PhylaxButtonEvent e) {
-  switch (state) {
-    case S_ENT_ASK:
-      if (e == PHYLAX_BUTTON_LEFT) {
-        start_setup();  // skip: the block's own random numbers only
-      } else if (e == PHYLAX_BUTTON_RIGHT) {
-        state = S_ENT_KIND;
-        show_ent_kind();
-      }
-      break;
-    case S_ENT_KIND:
-      if (e == PHYLAX_BUTTON_LEFT) {
-        state = S_ENT_COIN;
-        show_coin();
-      } else if (e == PHYLAX_BUTTON_RIGHT) {
-        state = S_ENT_DICE;
-        dice_pos = 0;
-        show_dice();
-      } else {
-        ask_entropy();
-      }
-      break;
-    case S_ENT_COIN:
-      coin_event(e);
-      break;
-    case S_ENT_DICE:
-      dice_event(e);
-      break;
-    default:
-      break;
   }
 }
 
@@ -554,7 +322,9 @@ void phylax_setup_ui_poll(void) {
     }
 #endif
     PhylaxButtonEvent e = phylax_buttons_next();
-    if (e != PHYLAX_BUTTON_NONE) choosing_event(e);
+    if (e == PHYLAX_BUTTON_NONE) return;
+    // Skipped or complete: the result (if any) goes into the EntropyAck.
+    if (phylax_userent_event(e) != PHYLAX_USERENT_CONTINUE) start_setup();
     return;
   }
   if (state != S_PROMPT) return;
@@ -583,13 +353,10 @@ bool phylax_setup_poll(void) {
       return true;
     }
     case S_PROMPT:
-    case S_ENT_ASK:
-    case S_ENT_KIND:
-    case S_ENT_COIN:
-    case S_ENT_DICE: {
+    case S_ENT: {
       const PhylaxStackEntry *e = find_uid(target_uid);
       if (e == NULL || (e->hello.flags & PHYLAX_HELLO_INITIALIZED)) {
-        forget_user_entropy();
+        phylax_userent_forget();
         state = S_IDLE;  // removed, or set up some other way meanwhile
         release_screen();
         return false;

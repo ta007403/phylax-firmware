@@ -18,7 +18,6 @@
  */
 
 #include "reset.h"
-#include "phylax_pin.h"
 #include "bip39.h"
 #include "config.h"
 #include "fsm.h"
@@ -29,6 +28,8 @@
 #include "messages.h"
 #include "messages.pb.h"
 #include "oled.h"
+#include "phylax_pin.h"
+#include "phylax_userent.h"
 #include "protect.h"
 #include "rng.h"
 #include "sha2.h"
@@ -89,6 +90,14 @@ void reset_init(uint32_t _strength, bool passphrase_protection,
     return;
   }
 
+  // PHYLAX: optionally the user's own coin flips or dice rolls (only asked on
+  // PHYLAX blocks, see phylax_userent.h).
+  if (!phylax_userent_collect_for_reset()) {
+    fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
+    layoutHome();
+    return;
+  }
+
   config_setPassphraseProtection(passphrase_protection);
   config_setLanguage(language);
   config_setLabel(label);
@@ -108,6 +117,9 @@ static void send_entropy_request(bool set_prev_entropy) {
   // PHYLAX: mix in the button timings collected while the PIN was entered
   // on the block (no-op when there are none).
   phylax_entropy_mix(int_entropy);
+  // ...and the user's coin flips or dice rolls, if any. Every round, so what
+  // the entropy check reveals is what was mixed.
+  phylax_userent_mix(int_entropy);
   if (entropy_check) {
     hmac_sha256(int_entropy, sizeof(int_entropy), NULL, 0,
                 resp.entropy_commitment.bytes);
@@ -160,6 +172,7 @@ void reset_continue(bool finish) {
 
 static void reset_finish(void) {
   memzero(int_entropy, sizeof(int_entropy));
+  phylax_userent_forget();
   memzero(seed, sizeof(seed));
   reset_state = RESET_NONE;
   if (skip_backup || no_backup) {
@@ -254,6 +267,9 @@ void reset_abort(void) {
   memzero(seed, sizeof(seed));
   mnemonic_clear();
   if (reset_state != RESET_NONE) {
+    // Only our own wallet creation: the same flips screens may belong to a
+    // key-block setup on the main block, which a PC Initialize must not wipe.
+    phylax_userent_forget();
     reset_state = RESET_NONE;
     layoutHome();
   }
