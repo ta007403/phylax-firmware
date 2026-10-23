@@ -60,33 +60,33 @@ that does nothing else, or at least never put coins on those three addresses.
 
        trezorctl firmware update -s -f firmware.signed.bin
 
-## Once per board: install the PHYLAX bootloader
+## Which boards can get the PHYLAX bootloader
 
-Boards that ever ran Trezor's production bootloader (yours did: they show the
-"Unofficial firmware" warning) have the STM32's read protection at level 2.
-That is permanent: SWD (ST-Link) cannot connect to them any more. The
-bootloader can only be replaced from running firmware, the way Trezor updates
-its own bootloaders. That is what the installer does.
+**Not boards that ran Trezor's production bootloader.** That bootloader sets
+the STM32's read protection to level 2 (permanent: SWD/ST-Link is switched
+off), and it starts any firmware Trezor did not sign in a restricted mode
+where the flash controller is blocked, so that firmware cannot rewrite the
+bootloader either. Tested: the installer on such a board stops with "This
+bootloader cannot be replaced from here. Nothing was changed." On those
+boards PHYLAX firmware always shows the "Unofficial firmware" warning and
+every update erases the seed. Real Trezor Ones are the same.
 
-**This cannot be undone.** Afterwards the board only runs PHYLAX-signed
-firmware without warnings; official Trezor firmware would stop with "Unknown
-bootloader". A real Trezor One treated this way becomes a PHYLAX board for
-good. If a write goes wrong, a locked board cannot be recovered over SWD.
-**Try it on a spare board first.**
+**Yes:** blank or unlocked STM32F205 chips, over ST-Link (below). Check a
+board first with `st-info --probe`: an unlocked chip answers with its flash
+size; a level-2 chip does not answer.
 
-1. Write down the block's 24 words (flashing unsigned firmware erases them).
-2. Bootloader mode, then flash the installer:
+## Updating a PHYLAX bootloader later (installer)
 
-       trezorctl firmware update -s -f blinstall/firmware.bin
+The `blinstall` build replaces the bootloader from running firmware after
+asking on the device ("Install the PHYLAX bootloader?"). It only has the
+rights to do so when the bootloader that starts it trusts it, i.e. under a
+PHYLAX bootloader and **signed** with the PHYLAX keys like any release:
 
-3. Accept the "Unofficial firmware" warning once. The installer asks
-   **"Install the PHYLAX bootloader?"**: right button = Install, left =
-   Cancel (nothing changes). It writes and checks the bootloader, then asks
-   you to reconnect.
-4. After reconnecting it says **"bootloader is installed. Now install signed
-   PHYLAX firmware."** Go to bootloader mode (now with the PHYLAX logo) and
-   flash a signed `main` or `key` firmware (above).
-5. Restore the block's seed if it had one. From now on updates keep it.
+1. Write down the block's 24 words.
+2. Sign `blinstall/firmware/firmware.bin` (`phylax_sign.py sign`), go to
+   bootloader mode and flash the signed file.
+3. Confirm **Install** (right button); never unplug during "Updating
+   bootloader". Then reconnect and flash signed `main`/`key` firmware.
 
 PHYLAX firmware itself never replaces a bootloader: it runs on Trezor's and
 on PHYLAX's, so a real Trezor One running PHYLAX firmware stays a Trezor One.

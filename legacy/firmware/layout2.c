@@ -331,7 +331,11 @@ void layoutHomescreen(void) {
   }
   layoutLast = layoutHomescreen;
 
+#if PHYLAX_DEVICE_FIRMWARE
+  char label[MAX_LABEL_LEN + 1] = _("Welcome to PHYLAX");
+#else
   char label[MAX_LABEL_LEN + 1] = _("Go to trezor.io/start");
+#endif
   if (config_isInitialized()) {
     config_getLabel(label, sizeof(label));
   }

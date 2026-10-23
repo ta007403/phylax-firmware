@@ -309,8 +309,12 @@ void check_and_replace_bootloader(bool shutdown_on_replace) {
                           NULL);
   }
   if (is_mode_unprivileged()) {
-    phylax_installer_halt(_("Cannot install the"), _("bootloader here."), NULL,
-                          NULL);
+    // The running bootloader started this image without rights to the flash
+    // controller (Trezor's bootloader does that for firmware Trezor did not
+    // sign). Then only an ST-Link on an unlocked chip, or a PHYLAX-signed
+    // installer under a PHYLAX bootloader, can replace the bootloader.
+    phylax_installer_halt(_("This bootloader"), _("cannot be replaced"),
+                          _("from here. Nothing"), _("was changed."));
   }
   if (!phylax_installer_confirm()) {
     phylax_installer_halt(_("Cancelled."), _("Nothing changed."), NULL, NULL);
