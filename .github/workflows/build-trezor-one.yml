@@ -69,7 +69,10 @@ jobs:
           test -f build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
           sha256sum build/legacy-T1B1-bitcoinonly/firmware/firmware.bin build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
           # The bootloader hash as the firmware sees it (for phylax_bl_hashes.h)
-          python3 -c "import hashlib,sys; d=open(sys.argv[1],'rb').read(); d+=bytes(32768-len(d)); print('bootloader hash:', hashlib.sha256(hashlib.sha256(d).digest()).hexdigest())" build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
+          BLHASH=$(python3 -c "import hashlib,sys; d=open(sys.argv[1],'rb').read(); d+=bytes(32768-len(d)); print(hashlib.sha256(hashlib.sha256(d).digest()).hexdigest())" build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin)
+          echo "bootloader hash: $BLHASH"
+          # Shown on the run's summary page (Annotations)
+          echo "::notice title=${{ matrix.role }} bootloader hash::$BLHASH"
 
       - name: Upload firmware
         if: steps.signing.outputs.skip != 'true'

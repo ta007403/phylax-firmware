@@ -12,6 +12,9 @@
 
 static const char *const phylax_bootloader_hashes[] = {
     // "\x..." x 32 per released PHYLAX bootloader
+    // 1st PHYLAX bootloader (1.12.1 base), CI run of commit 8c4847e
+    "\x95\xb8\x0f\x96\xcf\x3f\x71\x3f\x01\x71\x1b\x28\xb1\x6c\x4b\xe5"
+    "\xfe\xf3\xa8\xb4\xa6\x54\x12\x88\x5d\xc6\xc8\x79\x34\xc1\x3d\xab",
     NULL,  // end
 };
 
