@@ -122,7 +122,7 @@ and, on Add, **"Coin flips or dice?"** (Coin / Dice):
 - **Coin**: flip a real coin 256 times; left = heads, right = tails, both
   buttons = undo the last flip (or go back, before the first).
 - **Dice**: roll a real 6-sided die 99 times (99 x log2 6 = 255.9 bits); the
-  carousel `1..6, UNDO` works like the PIN entry, both buttons select. UNDO
+  carousel `1..6, DEL` works like the PIN entry, both buttons select. DEL
   before the first roll goes back.
 
 Either is full strength on its own, and is mixed in, never used alone.

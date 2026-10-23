@@ -47,7 +47,7 @@ typedef enum {
 // hashed and mixed into the main block's random bytes, never replacing them.
 #define COIN_FLIPS 256
 #define DICE_ROLLS 99
-#define DICE_UNDO 6  // carousel: 1..6, UNDO
+#define DICE_UNDO 6  // carousel: 1..6, DEL
 #define DICE_ITEMS 7
 
 static SetupState state = S_IDLE;
@@ -209,7 +209,7 @@ static void show_coin(void) {
 
 static const char *dice_label(int i) {
   static const char *const labels[DICE_ITEMS] = {"1", "2", "3",   "4",
-                                                 "5", "6", "UNDO"};
+                                                 "5", "6", "DEL"};
   return labels[(i + DICE_ITEMS) % DICE_ITEMS];
 }
 

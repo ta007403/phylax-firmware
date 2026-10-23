@@ -6,7 +6,7 @@ After "New key block found. Set it up?" the main block asks "Add your own
 randomness?" (Skip / Add) and "Coin flips or dice?" (Coin / Dice):
 
   coin  left = heads, right = tails, both = undo (or back, before the first)
-  dice  carousel 1..6, UNDO; both = select (UNDO before the first = back)
+  dice  carousel 1..6, DEL; both = select (DEL before the first = back)
 
 256 flips or 99 rolls are hashed and mixed into the random bytes the main
 block sends the key block (EntropyAck), never replacing them.
@@ -39,10 +39,10 @@ from test_setup import GOOD  # noqa: E402
 from test_wallets import wait_wallets  # noqa: E402
 
 MAIN_SCRIPTS = {
-    # Add, Dice, (on "1") left to UNDO = BACK, both -> asked again;
+    # Add, Dice, (on "1") left to DEL = BACK, both -> asked again;
     # Add, Coin, heads + undo, then 256 flips.
     "coin": "RR" + "LB" + "RL" + "LB" + "LR" * 128,
-    # Add, Dice, "1" then UNDO it (left to UNDO, both, right back to 1),
+    # Add, Dice, "1" then DEL it (left to DEL, both, right back to 1),
     # then 99 rolls: 98 x "1", right to "2", one "2".
     "dice": "RR" + "B" + "LB" + "R" + "B" * 98 + "RB",
     # One flip short: the setup must not start.

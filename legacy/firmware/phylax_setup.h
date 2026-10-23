@@ -11,7 +11,7 @@
  *     Coin flips or dice?                    [Coin] [Dice]
  *
  * 256 coin flips (left = heads, right = tails, both = undo) or 99 dice rolls
- * (carousel 1..6, UNDO; both = select). They are hashed and mixed into the
+ * (carousel 1..6, DEL; both = select). They are hashed and mixed into the
  * EntropyAck below; "Skip" leaves the block's own random numbers only.
  *
  * Then it talks to the key block over the bus the way Trezor Suite would talk
