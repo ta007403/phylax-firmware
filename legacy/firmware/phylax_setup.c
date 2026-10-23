@@ -33,13 +33,13 @@
 
 typedef enum {
   S_IDLE,
-  S_PROMPT,     // "New key block found. Set it up?"
-  S_ENT_ASK,    // "Add your own randomness?"  Skip / Add
-  S_ENT_KIND,   // "Coin flips or dice?"       Coin / Dice
-  S_ENT_COIN,   // 256 coin flips
-  S_ENT_DICE,   // 99 dice rolls
-  S_RUNNING,    // the user follows the key block's screen
-  S_RESULT,     // "Key block is ready." / why it stopped
+  S_PROMPT,    // "New key block found. Set it up?"
+  S_ENT_ASK,   // "Add your own randomness?"  Skip / Add
+  S_ENT_KIND,  // "Coin flips or dice?"       Coin / Dice
+  S_ENT_COIN,  // 256 coin flips
+  S_ENT_DICE,  // 99 dice rolls
+  S_RUNNING,   // the user follows the key block's screen
+  S_RESULT,    // "Key block is ready." / why it stopped
 } SetupState;
 
 // Your own randomness: 256 coin flips (256 bits) or 99 dice rolls
@@ -132,10 +132,9 @@ static void show_prompt(void) {
 }
 
 static void show_ent_ask(void) {
-  layoutDialog(&bmp_icon_question, _("Skip"), _("Add"), NULL,
-               _("Add your own"), _("randomness?"), NULL,
-               _("Coin flips or dice,"), _("mixed with the block's"),
-               _("random numbers."));
+  layoutDialog(&bmp_icon_question, _("Skip"), _("Add"), NULL, _("Add your own"),
+               _("randomness?"), NULL, _("Coin flips or dice,"),
+               _("mixed with the block's"), _("random numbers."));
 }
 
 static void show_ent_kind(void) {
@@ -197,7 +196,7 @@ static void show_coin(void) {
 }
 
 static const char *dice_label(int i) {
-  static const char *const labels[DICE_ITEMS] = {"1", "2", "3", "4",
+  static const char *const labels[DICE_ITEMS] = {"1", "2", "3",   "4",
                                                  "5", "6", "UNDO"};
   return labels[(i + DICE_ITEMS) % DICE_ITEMS];
 }
@@ -258,9 +257,8 @@ static void on_failure(const uint8_t *data, uint32_t len) {
   memzero(&fail, sizeof(fail));
   pb_istream_t stream = pb_istream_from_buffer(data, len);
   bool decoded = pb_decode(&stream, Failure_fields, &fail);
-  FailureType code = decoded && fail.has_code
-                         ? fail.code
-                         : FailureType_Failure_ProcessError;
+  FailureType code =
+      decoded && fail.has_code ? fail.code : FailureType_Failure_ProcessError;
   end_conversation(false);
   switch (code) {
     case FailureType_Failure_PinMismatch:
@@ -280,14 +278,13 @@ static void on_failure(const uint8_t *data, uint32_t len) {
   }
 }
 
-static void on_key_message(uint16_t msg_id, const uint8_t *data,
-                           uint32_t len) {
+static void on_key_message(uint16_t msg_id, const uint8_t *data, uint32_t len) {
   if (state != S_RUNNING) return;
   switch (msg_id) {
     case MessageType_MessageType_ButtonRequest:
       // The user confirms on the key block itself.
-      phylax_bus_send_trezor_msg(target_addr,
-                                 MessageType_MessageType_ButtonAck, NULL, 0);
+      phylax_bus_send_trezor_msg(target_addr, MessageType_MessageType_ButtonAck,
+                                 NULL, 0);
       break;
     case MessageType_MessageType_EntropyRequest: {
       // The main block's TRNG plays the part of the PC's entropy.
@@ -521,8 +518,10 @@ void phylax_setup_ui_poll(void) {
     return;
   }
 #endif
-  if (button.YesUp) answer(true);
-  else if (button.NoUp) answer(false);
+  if (button.YesUp)
+    answer(true);
+  else if (button.NoUp)
+    answer(false);
 }
 
 bool phylax_setup_poll(void) {

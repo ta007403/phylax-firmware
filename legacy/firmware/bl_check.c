@@ -238,7 +238,8 @@ static int known_bootloader(int r, const uint8_t *hash) {
 }
 #endif
 
-#if (PHYLAX_DEVICE_FIRMWARE || PHYLAX_BL_INSTALLER) && (PRODUCTION || BOOTLOADER_QA)
+#if (PHYLAX_DEVICE_FIRMWARE || PHYLAX_BL_INSTALLER) && \
+    (PRODUCTION || BOOTLOADER_QA)
 #include "phylax_bl_built.h"
 #include "phylax_bl_hashes.h"
 
@@ -262,8 +263,8 @@ static int phylax_known_bootloader(int r, const uint8_t *hash) {
 // only after the user confirms on the device. It never returns.
 static void phylax_installer_halt(const char *l1, const char *l2,
                                   const char *l3, const char *l4) {
-  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), l1, l2, NULL,
-               l3, l4);
+  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), l1, l2, NULL, l3,
+               l4);
   shutdown();
 }
 
@@ -304,12 +305,12 @@ void check_and_replace_bootloader(bool shutdown_on_replace) {
                           _("Now install signed"), _("PHYLAX firmware."));
   }
   if (!known_bootloader(r, hash) && !phylax_known_bootloader(r, hash)) {
-    phylax_installer_halt(_("Unknown bootloader."), _("Nothing changed."),
-                          NULL, NULL);
+    phylax_installer_halt(_("Unknown bootloader."), _("Nothing changed."), NULL,
+                          NULL);
   }
   if (is_mode_unprivileged()) {
-    phylax_installer_halt(_("Cannot install the"), _("bootloader here."),
-                          NULL, NULL);
+    phylax_installer_halt(_("Cannot install the"), _("bootloader here."), NULL,
+                          NULL);
   }
   if (!phylax_installer_confirm()) {
     phylax_installer_halt(_("Cancelled."), _("Nothing changed."), NULL, NULL);

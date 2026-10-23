@@ -489,8 +489,7 @@ static void rx_callback(usbd_device *dev, uint8_t ep) {
       for (int i = 3; i > 0; i--) {
         line[21] = '0' + i;
         layoutDialog(&bmp_icon_ok, NULL, NULL, NULL, "New firmware",
-                     "successfully installed.", NULL, DEVICE_YOUR, line,
-                     NULL);
+                     "successfully installed.", NULL, DEVICE_YOUR, line, NULL);
         delay(30000 * 1000);
       }
       scb_reset_system();

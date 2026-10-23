@@ -33,7 +33,6 @@ void show_unplug(const char *line1, const char *line2);
 void layoutFirmwareFingerprint(const uint8_t *hash);
 bool get_button_response(void);
 
-
 // PHYLAX Blocks: the PHYLAX bootloader's wording (PHYLAX_SIGNING builds).
 #if PHYLAX_SIGNING
 #define BOOTLOADER_BRAND "PHYLAX"

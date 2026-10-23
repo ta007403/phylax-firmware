@@ -13,11 +13,14 @@
 
 #include "fw_signatures.h"
 
-// Host stubs: verification needs neither flash nor randomness.
+// Host stubs: no flash; randomness for the point blinding in ecdsa.c
+// (it loops until it gets a non-zero value).
 #include <stddef.h>
-#include <string.h>
+#include <sys/random.h>
 uint8_t *emulator_flash_base = NULL;
-void random_buffer(uint8_t *buf, size_t len) { memset(buf, 0, len); }
+void random_buffer(uint8_t *buf, size_t len) {
+  if (getrandom(buf, len, 0) != (ssize_t)len) abort();
+}
 
 int main(int argc, char **argv) {
   if (argc != 2) return 2;
