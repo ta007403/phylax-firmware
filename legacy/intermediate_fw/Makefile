@@ -20,6 +20,10 @@ OPTFLAGS ?= -Os
 
 include ../Makefile.include
 CFLAGS:=$(filter-out -fstack-protector-all,$(CFLAGS))
+# PHYLAX Blocks: the intermediate firmware is Trezor's own transition image;
+# it shares bl_check.c but none of PHYLAX's bootloader handling.
+CFLAGS:=$(filter-out -DPHYLAX_DEVICE_FIRMWARE=1 -DPHYLAX_BL_INSTALLER=1,$(CFLAGS))
+CFLAGS += -DPHYLAX_DEVICE_FIRMWARE=0 -DPHYLAX_BL_INSTALLER=0
 
 DEBUG_LINK ?= 0
 DEBUG_LOG  ?= 0
