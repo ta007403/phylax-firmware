@@ -345,12 +345,12 @@ void layoutHomescreen(void) {
     oledDrawBitmap(0, 0, &b);
   } else {
     if (label[0] != '\0') {
-      oledDrawBitmap(44, 4, &bmp_logo48);
+      // PHYLAX Blocks: the PHYLAX mark instead of the Trezor logo
+      oledDrawBitmap((OLED_WIDTH - 48) / 2, 2, &bmp_phylax_logo48);
       oledDrawStringCenter(OLED_WIDTH / 2, OLED_HEIGHT - 8, label,
                            FONT_STANDARD);
     } else {
-      oledDrawBitmap(40, 0, &bmp_logo64_half);
-      oledDrawBitmapFlip(40 + 24, 0, &bmp_logo64_half);
+      oledDrawBitmap((OLED_WIDTH - 64) / 2, 0, &bmp_phylax_logo64);
     }
   }
 

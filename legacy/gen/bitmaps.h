@@ -33,6 +33,8 @@ extern const BITMAP bmp_logo48;
 extern const BITMAP bmp_logo48_empty;
 extern const BITMAP bmp_logo64_empty_half;
 extern const BITMAP bmp_logo64_half;
+extern const BITMAP bmp_phylax_logo48;
+extern const BITMAP bmp_phylax_logo64;
 extern const BITMAP bmp_webauthn;
 
 #endif

@@ -191,7 +191,29 @@ endif
 	@printf "  MAKO    $@\n"
 	$(Q)$(PYTHON) ../vendor/trezor-common/tools/cointool.py render $(MAKO_RENDER_FLAG) $@.mako
 
-ifeq ($(BOOTLOADER_QA), 0)
+# PHYLAX Blocks: the hash of the PHYLAX bootloader built in the same run
+# (PHYLAX_SIGNING=1: ../bootloader is PHYLAX's), see phylax_bl_built.py.
+ifeq ($(PHYLAX_SIGNING), 1)
+PHYLAX_BL_BUILT_SRC = ../bootloader/bootloader.bin
+else
+PHYLAX_BL_BUILT_SRC = -
+endif
+phylax_bl_built.h: phylax_bl_built.py FORCE
+	@printf "  PYTHON  phylax_bl_built.py $(PHYLAX_BL_BUILT_SRC)\n"
+	$(Q)$(PYTHON) phylax_bl_built.py $(PHYLAX_BL_BUILT_SRC)
+bl_check.o: phylax_bl_built.h
+.PHONY: FORCE
+FORCE:
+
+# The installer carries the PHYLAX bootloader built in the same run.
+phylax_bootloader.dat: ../bootloader/bootloader.bin
+	cp $< $@
+
+ifeq ($(PHYLAX_BUILD_ROLE), blinstall)
+bl_data.h: bl_data.py phylax_bootloader.dat
+	@printf "  PYTHON  bl_data.py phylax_bootloader.dat\n"
+	$(Q)$(PYTHON) bl_data.py phylax_bootloader.dat
+else ifeq ($(BOOTLOADER_QA), 0)
 bl_data.h: bl_data.py bootloader.dat
 	@printf "  PYTHON  bl_data.py bootloader.dat\n"
 	$(Q)$(PYTHON) bl_data.py bootloader.dat
@@ -204,5 +226,5 @@ endif
 header.o: version.h
 
 clean::
-	rm -f bl_data.h
+	rm -f bl_data.h phylax_bl_built.h phylax_bootloader.dat
 	find -maxdepth 1 -name "*.mako" | sed 's/.mako$$//' | xargs rm -f

@@ -55,13 +55,13 @@ bool get_button_response(void) {
 
 void show_halt(const char *line1, const char *line2) {
   layoutDialog(&bmp_icon_error, NULL, NULL, NULL, line1, line2, NULL,
-               "Unplug your Trezor,", "reinstall firmware.", NULL);
+               DEVICE_UNPLUG_LINE ",", "reinstall firmware.", NULL);
   shutdown();
 }
 
 void show_unplug(const char *line1, const char *line2) {
   layoutDialog(&bmp_icon_ok, NULL, NULL, NULL, line1, line2, NULL,
-               "You may now", "unplug your Trezor.", NULL);
+               "You may now", DEVICE_UNPLUG_LINE ".", NULL);
 }
 
 static void show_unofficial_warning(const uint8_t *hash) {
@@ -104,10 +104,14 @@ static void __attribute__((noreturn)) load_app(int signed_firmware) {
 
 static void bootloader_loop(void) {
   oledClear();
+#if PHYLAX_SIGNING
+  oledDrawBitmap(0, 0, &bmp_phylax_logo64);
+#else
   oledDrawBitmap(0, 0, &bmp_logo64_half);
   oledDrawBitmapFlip(24, 0, &bmp_logo64_half);
+#endif
   if (firmware_present_new()) {
-    oledDrawStringCenter(90, 10, "Trezor", FONT_STANDARD);
+    oledDrawStringCenter(90, 10, BOOTLOADER_BRAND, FONT_STANDARD);
     oledDrawStringCenter(90, 30, "Bootloader", FONT_STANDARD);
     oledDrawStringCenter(90, 50,
                          VERSTR(VERSION_MAJOR) "." VERSTR(
@@ -115,8 +119,13 @@ static void bootloader_loop(void) {
                          FONT_STANDARD);
   } else {
     oledDrawStringCenter(90, 10, "Welcome!", FONT_STANDARD);
+#if PHYLAX_SIGNING
+    oledDrawStringCenter(90, 30, "Install PHYLAX", FONT_STANDARD);
+    oledDrawStringCenter(90, 50, "firmware.", FONT_STANDARD);
+#else
     oledDrawStringCenter(90, 30, "Please visit", FONT_STANDARD);
     oledDrawStringCenter(90, 50, "trezor.io/start", FONT_STANDARD);
+#endif
   }
   oledRefresh();
 
@@ -149,8 +158,12 @@ int main(void) {
 
   if (firmware_present_new() && !left_pressed) {
     oledClear();
+#if PHYLAX_SIGNING
+    oledDrawBitmap(32, 0, &bmp_phylax_logo64);
+#else
     oledDrawBitmap(40, 0, &bmp_logo64_empty_half);
     oledDrawBitmapFlip(40 + 24, 0, &bmp_logo64_empty_half);
+#endif
     oledRefresh();
 
     const image_header *hdr =

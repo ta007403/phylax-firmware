@@ -46,6 +46,19 @@ bool phylax_local_ui(void);
 // from the main block).
 const char *phylax_pin_entry(PinMatrixRequestType type);
 
+// The two buttons as events, without blocking: left alone, right alone, or
+// both (down together at some point), reported once all are released. Every
+// change is also noted in the entropy pool. Emulator tests: read from
+// PHYLAX_EMU_PIN_KEYS instead (see phylax_buttons_scripted).
+typedef enum {
+  PHYLAX_BUTTON_NONE,
+  PHYLAX_BUTTON_LEFT,
+  PHYLAX_BUTTON_RIGHT,
+  PHYLAX_BUTTON_BOTH,
+} PhylaxButtonEvent;
+PhylaxButtonEvent phylax_buttons_next(void);
+bool phylax_buttons_scripted(void);
+
 // Entropy pool: note an event, and mix the pool into 32 bytes of entropy
 // (out = SHA256(out || pool)); the pool is emptied. No events: unchanged.
 void phylax_entropy_note(uint32_t a, uint32_t b);

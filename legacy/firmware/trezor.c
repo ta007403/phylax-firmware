@@ -204,8 +204,8 @@ int main(void) {
       "\x1b[0m\n");
 #endif
 
-  oledDrawBitmap(40, 0, &bmp_logo64_half);
-  oledDrawBitmapFlip(40 + 24, 0, &bmp_logo64_half);
+  // PHYLAX Blocks: the PHYLAX mark instead of the Trezor logo
+  oledDrawBitmap((OLED_WIDTH - 64) / 2, 0, &bmp_phylax_logo64);
   oledRefresh();
 
   config_init();

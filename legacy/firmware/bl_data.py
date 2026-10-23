@@ -21,7 +21,9 @@ with open("bl_data.h", "wt") as f:
     f.write(f"static const uint8_t bl_hash[32] = {{{bl_hash}}};\n")
     f.write(f"static const uint8_t bl_data[32768] = {{{bl_data}}};\n")
 
-if fn != "bootloader_qa.dat":
+# PHYLAX Blocks: the PHYLAX bootloader is not in Trezor's list (it is in
+# phylax_bl_hashes.h), so the check below is for Trezor's own bootloader.dat.
+if fn not in ("bootloader_qa.dat", "phylax_bootloader.dat"):
     # make sure the last item listed in known_bootloader function
     # is our bootloader
     with open("bl_check.c", "rt") as f:

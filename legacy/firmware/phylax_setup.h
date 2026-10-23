@@ -5,16 +5,25 @@
  *
  *     New key block found. Set it up?        [No]  [Set up]
  *
- * on its own screen. On "Set up" it talks to the key block over the bus the
- * way Trezor Suite would talk to a Trezor over USB:
+ * on its own screen. On "Set up" it offers your own randomness:
+ *
+ *     Add your own randomness?               [Skip] [Add]
+ *     Coin flips or dice?                    [Coin] [Dice]
+ *
+ * 256 coin flips (left = heads, right = tails, both = undo) or 99 dice rolls
+ * (carousel 1..6, UNDO; both = select). They are hashed and mixed into the
+ * EntropyAck below; "Skip" leaves the block's own random numbers only.
+ *
+ * Then it talks to the key block over the bus the way Trezor Suite would talk
+ * to a Trezor over USB:
  *
  *   main                                  key block
  *   LOCAL_UI(1)  ------------------------>  PINs on its own buttons
  *   ResetDevice(24 words, PIN)  --------->  "Create a new wallet?"   (buttons)
  *                                           Choose a PIN, enter it again
  *   <------------------------------------  EntropyRequest
- *   EntropyAck(32 bytes from the main
- *              block's TRNG)  ------------>  seed = SHA256(
+ *   EntropyAck(32 bytes: main TRNG,
+ *     button timings, your flips)  ------>  seed = SHA256(
  *                                              SHA256(TRNG || button timings)
  *                                              || main block's bytes)
  *                                           24 words shown, twice   (buttons)
@@ -49,7 +58,7 @@ bool phylax_setup_running(void);
 // One step. Called by the wallet poll when it is idle and the screen is
 // free. Returns true if setup uses the screen (prompt, progress, result).
 bool phylax_setup_poll(void);
-// Buttons on the main block (prompt only).
+// Buttons on the main block (prompt, coin flips / dice).
 void phylax_setup_ui_poll(void);
 // Something with priority (signing, the PC in select mode) took over.
 void phylax_setup_abort(void);

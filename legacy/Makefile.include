@@ -151,11 +151,27 @@ endif
 #   PHYLAX_BUILD_ROLE=main  main block (USB to the PC)
 #   PHYLAX_BUILD_ROLE=key   key block
 #   anything else           stock Trezor One behaviour
+#   PHYLAX_BUILD_ROLE=blinstall  one-time PHYLAX bootloader installer
+#     (embeds firmware/phylax_bootloader.dat, see phylax/release/README.md)
 ifeq ($(PHYLAX_BUILD_ROLE), main)
-CFLAGS += -DPHYLAX_ROLE=PHYLAX_ROLE_MAIN
+CFLAGS += -DPHYLAX_ROLE=PHYLAX_ROLE_MAIN -DPHYLAX_DEVICE_FIRMWARE=1
+else ifeq ($(PHYLAX_BUILD_ROLE), key)
+CFLAGS += -DPHYLAX_ROLE=PHYLAX_ROLE_KEY -DPHYLAX_DEVICE_FIRMWARE=1
+else
+CFLAGS += -DPHYLAX_DEVICE_FIRMWARE=0
 endif
-ifeq ($(PHYLAX_BUILD_ROLE), key)
-CFLAGS += -DPHYLAX_ROLE=PHYLAX_ROLE_KEY
+ifeq ($(PHYLAX_BUILD_ROLE), blinstall)
+CFLAGS += -DPHYLAX_BL_INSTALLER=1
+else
+CFLAGS += -DPHYLAX_BL_INSTALLER=0
+endif
+
+# PHYLAX Blocks: PHYLAX_SIGNING=1 builds the PHYLAX bootloader's signature
+# check (PHYLAX's firmware keys instead of Trezor's, fw_signatures.c).
+ifeq ($(PHYLAX_SIGNING), 1)
+CFLAGS += -DPHYLAX_SIGNING=1
+else
+CFLAGS += -DPHYLAX_SIGNING=0
 endif
 
 ifeq ($(BITCOIN_ONLY), 1)

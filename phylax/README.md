@@ -116,11 +116,25 @@ Then the key block does the rest on its own screen and buttons:
    same as Suite's PIN grid, so this PIN also unlocks the block from Suite.
 3. Write down the 24 words; they are shown twice.
 
-The seed is `SHA256(SHA256(key TRNG || button timings) || main block TRNG)`:
-the key block's hardware random number generator, the timing of every
-button change during PIN entry (in ms and in loop turns), and 32 bytes from
-the main block's TRNG in place of the PC's entropy. Each source can only
-add to the others. The words never leave the key block.
+Before that, the main block asks **"Add your own randomness?"** (Skip / Add)
+and, on Add, **"Coin flips or dice?"** (Coin / Dice):
+
+- **Coin**: flip a real coin 256 times; left = heads, right = tails, both
+  buttons = undo the last flip (or go back, before the first).
+- **Dice**: roll a real 6-sided die 99 times (99 x log2 6 = 255.9 bits); the
+  carousel `1..6, UNDO` works like the PIN entry, both buttons select. UNDO
+  before the first roll goes back.
+
+Either is full strength on its own, and is mixed in, never used alone.
+
+The seed is `SHA256(SHA256(key TRNG || button timings) || main bytes)` where
+`main bytes = SHA256(SHA256(main TRNG || main button timings) ||
+SHA256("PHYLAX coin flips v1" or "PHYLAX dice rolls v1" || your flips))`
+(the last part only if you added your own): the key block's hardware random
+number generator, the timing of every button change on both blocks, and the
+main block's TRNG in place of the PC's entropy, plus your coin or dice.
+Each source can only add to the others. The flips are wiped from memory once
+hashed, and the words never leave the key block.
 
 On the bus this is the normal Trezor One `ResetDevice` flow, with the main
 block in the PC's place (`LOCAL_UI(1)` before it tells the key block to take
@@ -184,3 +198,9 @@ uv run --with embit python ../phylax/tests/test_rename.py     # rename and delet
 ```
 
 Add `--headless` to a single test to run it without emulator windows.
+
+## Releases, signing and the PHYLAX bootloader
+
+See [release/README.md](release/README.md): PHYLAX's own firmware signing keys
+(on one Trezor One), the PHYLAX bootloader (no "Unofficial firmware" warning,
+updates keep the seed) and the one-time bootloader installer.

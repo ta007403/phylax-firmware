@@ -462,6 +462,7 @@ EOF
       --env BITCOIN_ONLY="$BITCOIN_ONLY" \
       --env PRODUCTION="$PRODUCTION" \
       --env PHYLAX_BUILD_ROLE="${PHYLAX_BUILD_ROLE:-}" \
+      --env PHYLAX_SIGNING="${PHYLAX_SIGNING:-}" \
       --init \
       "$SNAPSHOT_NAME" \
       /nix/var/nix/profiles/default/bin/nix-shell --run "bash /local/build/$SCRIPT_NAME"

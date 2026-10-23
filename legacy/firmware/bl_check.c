@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "bl_data.h"
+#include "buttons.h"
 #include "gettext.h"
 #include "layout.h"
 #include "memory.h"
@@ -237,6 +238,55 @@ static int known_bootloader(int r, const uint8_t *hash) {
 }
 #endif
 
+#if (PHYLAX_DEVICE_FIRMWARE || PHYLAX_BL_INSTALLER) && (PRODUCTION || BOOTLOADER_QA)
+#include "phylax_bl_built.h"
+#include "phylax_bl_hashes.h"
+
+// PHYLAX Blocks: a released PHYLAX bootloader (phylax_bl_hashes.h) or the
+// one built together with this firmware (phylax_bl_built.h).
+static int phylax_known_bootloader(int r, const uint8_t *hash) {
+  if (r != 32) return 0;
+#ifdef PHYLAX_BL_BUILT_HASH
+  if (0 == memcmp(hash, PHYLAX_BL_BUILT_HASH, 32)) return 1;
+#endif
+  for (int i = 0; phylax_bootloader_hashes[i] != NULL; i++) {
+    if (0 == memcmp(hash, phylax_bootloader_hashes[i], 32)) return 1;
+  }
+  return 0;
+}
+#endif
+
+#if PHYLAX_BL_INSTALLER && (PRODUCTION || BOOTLOADER_QA)
+// PHYLAX Blocks: the one-time bootloader installer. It carries the PHYLAX
+// bootloader (bl_data) and replaces a known Trezor bootloader with it, but
+// only after the user confirms on the device. It never returns.
+static void phylax_installer_halt(const char *l1, const char *l2,
+                                  const char *l3, const char *l4) {
+  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), l1, l2, NULL,
+               l3, l4);
+  shutdown();
+}
+
+static bool phylax_installer_confirm(void) {
+  layoutDialog(&bmp_icon_warning, _("Cancel"), _("Install"), NULL,
+               _("Install the PHYLAX"), _("bootloader?"), NULL,
+               _("After this, only PHYLAX"), _("firmware runs here."),
+               _("It cannot be undone."));
+  // Wait for both buttons to be released first, then for one press.
+  for (;;) {
+    buttonUpdate();
+    if (!button.YesDown && !button.NoDown) break;
+    delay(100000);
+  }
+  for (;;) {
+    buttonUpdate();
+    if (button.YesUp) return true;
+    if (button.NoUp) return false;
+    delay(100000);
+  }
+}
+#endif
+
 /**
  * If bootloader is older and known, replace with newer bootloader.
  * If bootloader is unknown, halt with error message.
@@ -248,7 +298,37 @@ void check_and_replace_bootloader(bool shutdown_on_replace) {
   uint8_t hash[32] = {0};
   int r = memory_bootloader_hash(hash);
 
-  if (!known_bootloader(r, hash)) {
+#if PHYLAX_BL_INSTALLER
+  if (r == 32 && 0 == memcmp(hash, bl_hash, 32)) {
+    phylax_installer_halt(_("bootloader is"), _("installed."),
+                          _("Now install signed"), _("PHYLAX firmware."));
+  }
+  if (!known_bootloader(r, hash) && !phylax_known_bootloader(r, hash)) {
+    phylax_installer_halt(_("Unknown bootloader."), _("Nothing changed."),
+                          NULL, NULL);
+  }
+  if (is_mode_unprivileged()) {
+    phylax_installer_halt(_("Cannot install the"), _("bootloader here."),
+                          NULL, NULL);
+  }
+  if (!phylax_installer_confirm()) {
+    phylax_installer_halt(_("Cancelled."), _("Nothing changed."), NULL, NULL);
+  }
+  // fall through to the replacement below (it shows "Updating bootloader")
+#elif PHYLAX_DEVICE_FIRMWARE
+  // PHYLAX firmware runs on Trezor's and PHYLAX's bootloaders and never
+  // replaces either (a real Trezor One stays a Trezor One).
+  if (known_bootloader(r, hash) || phylax_known_bootloader(r, hash)) {
+    return;
+  }
+#endif
+
+#if PHYLAX_BL_INSTALLER
+  const int bl_known = 1;  // checked above: Trezor's or an older PHYLAX one
+#else
+  const int bl_known = known_bootloader(r, hash);
+#endif
+  if (!bl_known) {
     layoutDialog(&bmp_icon_error, NULL, NULL, NULL, _("Unknown bootloader"),
                  _("detected."), NULL, _("Unplug your Trezor"),
                  _("contact our support."), NULL);

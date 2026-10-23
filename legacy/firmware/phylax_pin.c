@@ -75,7 +75,11 @@ void phylax_entropy_mix(uint8_t entropy[32]) {
 
 // ------------------------------------------------------------ buttons
 
-typedef enum { EV_NONE, EV_LEFT, EV_RIGHT, EV_BOTH } ButtonEvent;
+typedef PhylaxButtonEvent ButtonEvent;
+#define EV_NONE PHYLAX_BUTTON_NONE
+#define EV_LEFT PHYLAX_BUTTON_LEFT
+#define EV_RIGHT PHYLAX_BUTTON_RIGHT
+#define EV_BOTH PHYLAX_BUTTON_BOTH
 
 #define BOTH_MASK (BTN_PIN_YES | BTN_PIN_NO)
 #define SAMPLE_MS 10  // sampling every 10 ms also debounces the contacts
@@ -151,6 +155,19 @@ static ButtonEvent next_event(void) {
   if (emu_keys() != NULL) return emu_next();
 #endif
   return read_buttons();
+}
+
+PhylaxButtonEvent phylax_buttons_next(void) {
+  spin++;
+  return next_event();
+}
+
+bool phylax_buttons_scripted(void) {
+#if EMULATOR
+  return emu_keys() != NULL;
+#else
+  return false;
+#endif
 }
 
 // ------------------------------------------------------------ PIN entry

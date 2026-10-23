@@ -44,7 +44,25 @@ const uint32_t FIRMWARE_MAGIC_NEW = 0x465a5254;  // TRZF
 #define PUBKEYS_V3 3
 #define PUBKEYS_V2 5
 
-#if DEBUG_T1_SIGNATURES || BOOTLOADER_QA
+#if PHYLAX_SIGNING
+// PHYLAX Blocks: the PHYLAX bootloader trusts PHYLAX's firmware keys, not
+// Trezor's: two SignMessage ("v3") signatures from these three keys, made
+// on the PHYLAX release Trezor (see phylax/release/README.md). The old v2
+// scheme is not accepted at all.
+#if DEBUG_T1_SIGNATURES
+#include "phylax_fw_keys_dev.h"
+#elif __has_include("phylax_fw_keys_release.h")
+#include "phylax_fw_keys_release.h"
+#else
+#error "No PHYLAX release keys: run phylax/release/phylax_sign.py keys first"
+#endif
+static const uint8_t *const pubkey_v3[PUBKEYS_V3] = {
+    (const uint8_t *)PHYLAX_FW_KEY_1,
+    (const uint8_t *)PHYLAX_FW_KEY_2,
+    (const uint8_t *)PHYLAX_FW_KEY_3,
+};
+
+#elif DEBUG_T1_SIGNATURES || BOOTLOADER_QA
 
 // Make build explode if combining debug sigs with production
 #if PRODUCTION
@@ -178,9 +196,15 @@ int signatures_ok(const image_header *hdr, uint8_t store_fingerprint[32],
     compute_firmware_fingerprint_for_verifymessage(hdr, hash);
     pubkeys = PUBKEYS_V3;
   } else {
-    pubkey_ptr = pubkey_v2;
     compute_firmware_fingerprint(hdr, hash);
+#if PHYLAX_SIGNING
+    // PHYLAX: no v2 keys; every index check below fails.
+    pubkey_ptr = NULL;
+    pubkeys = 0;
+#else
+    pubkey_ptr = pubkey_v2;
     pubkeys = PUBKEYS_V2;
+#endif
   }
 
   if (store_fingerprint) {

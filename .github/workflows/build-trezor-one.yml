@@ -21,8 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         # PHYLAX role of the build: stock = plain Trezor One behaviour,
-        # main = main block (USB to the PC), key = key block.
-        role: [stock, main, key]
+        # main = main block (USB to the PC), key = key block,
+        # blinstall = one-time PHYLAX bootloader installer.
+        role: [stock, main, key, blinstall]
     env:
       PHYLAX_BUILD_ROLE: ${{ matrix.role }}
 
@@ -30,7 +31,25 @@ jobs:
       - name: Get the code from this fork
         uses: actions/checkout@v5
 
+      - name: PHYLAX bootloader and signing
+        # Once legacy/phylax_fw_keys_release.h is committed (phylax_sign.py
+        # keys), PHYLAX builds also build the PHYLAX bootloader (PHYLAX's
+        # keys and logo) and remember its hash. Before that, the installer
+        # cannot be built and is skipped.
+        id: signing
+        run: |
+          if [ -f legacy/phylax_fw_keys_release.h ] && [ "${{ matrix.role }}" != stock ]; then
+            echo "PHYLAX_SIGNING=1" >> "$GITHUB_ENV"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ matrix.role }}" = blinstall ]; then
+            echo "::notice::No PHYLAX release keys committed yet: skipping the bootloader installer"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Bitcoin-only Trezor One firmware (${{ matrix.role }})
+        if: steps.signing.outputs.skip != 'true'
         # Trezor's own build script. It builds inside Docker from the
         # code checked out above, at the branch this run is for.
         #   --models T1B1  -> Trezor One only (skip newer models)
@@ -49,8 +68,11 @@ jobs:
           test -f build/legacy-T1B1-bitcoinonly/firmware/firmware.bin
           test -f build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
           sha256sum build/legacy-T1B1-bitcoinonly/firmware/firmware.bin build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
+          # The bootloader hash as the firmware sees it (for phylax_bl_hashes.h)
+          python3 -c "import hashlib,sys; d=open(sys.argv[1],'rb').read(); d+=bytes(32768-len(d)); print('bootloader hash:', hashlib.sha256(hashlib.sha256(d).digest()).hexdigest())" build/legacy-T1B1-bitcoinonly/bootloader/bootloader.bin
 
       - name: Upload firmware
+        if: steps.signing.outputs.skip != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: trezor-one-bitcoinonly-${{ matrix.role }}-${{ github.ref_name }}-${{ github.sha }}

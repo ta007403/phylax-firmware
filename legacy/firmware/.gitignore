@@ -6,3 +6,5 @@ ethereum_tokens.c
 u2f_knownapps.h
 
 bl_data.h
+phylax_bl_built.h
+phylax_bootloader.dat

@@ -489,7 +489,7 @@ static void rx_callback(usbd_device *dev, uint8_t ep) {
       for (int i = 3; i > 0; i--) {
         line[21] = '0' + i;
         layoutDialog(&bmp_icon_ok, NULL, NULL, NULL, "New firmware",
-                     "successfully installed.", NULL, "Your Trezor", line,
+                     "successfully installed.", NULL, DEVICE_YOUR, line,
                      NULL);
         delay(30000 * 1000);
       }
@@ -548,7 +548,11 @@ static void usbInit(bool firmware_present) {
   usbd_register_set_config_callback(usbd_dev, set_config);
   usb21_setup(usbd_dev, firmware_present ? &bos_descriptor_no_landing
                                          : &bos_descriptor_landing);
+#if PHYLAX_SIGNING
+  webusb_setup(usbd_dev, "phylaxwallet.com");  // the browser's landing page
+#else
   webusb_setup(usbd_dev, "trezor.io/start");
+#endif
   winusb_setup(usbd_dev, USB_INTERFACE_INDEX_MAIN);
 }
 
