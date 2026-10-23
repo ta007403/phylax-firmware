@@ -129,12 +129,24 @@ static const char *emu_keys(void) {
   return phylax_emu_autoconfirm() ? keys : NULL;
 }
 
+// PHYLAX_EMU_KEY_MS: ms between scripted presses (default 20; demos slower).
+static uint32_t emu_key_ms(void) {
+  static uint32_t ms = 0;
+  if (ms == 0) {
+    const char *v = getenv("PHYLAX_EMU_KEY_MS");
+    ms = v != NULL ? (uint32_t)strtoul(v, NULL, 10) : 0;
+    if (ms == 0) ms = 20;
+  }
+  return ms;
+}
+
 static ButtonEvent emu_next(void) {
   static size_t pos = 0;
   static uint32_t last_ms = 0;
   const char *keys = emu_keys();
   if (keys == NULL || keys[pos] == '\0') return EV_NONE;
-  if (timer_ms() - last_ms < 20) return EV_NONE;
+  if (last_ms == 0) last_ms = timer_ms();  // the first press waits too
+  if (timer_ms() - last_ms < emu_key_ms()) return EV_NONE;
   last_ms = timer_ms();
   phylax_entropy_note(spin, (uint32_t)pos);
   switch (keys[pos++]) {

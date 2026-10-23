@@ -124,23 +124,34 @@ static const PhylaxStackEntry *find_blank_key_block(void) {
 
 // ------------------------------------------------------------ screens
 
+static void show_state(void);
+
+// Setup no longer owns the screen: what is shown counts as a plain dialog,
+// so the wallet logic may replace it as before.
+static void release_screen(void) {
+  if (layoutLast == show_state) layoutLast = layoutDialog;
+}
+
 static void show_prompt(void) {
   layoutDialog(&bmp_icon_question, _("No"), _("Set up"), NULL,
                _("New key block found."), _("Set it up?"), NULL,
                _("You will choose a PIN"), _("and write down 24"),
                _("words on the block."));
+  layoutLast = show_state;
 }
 
 static void show_ent_ask(void) {
   layoutDialog(&bmp_icon_question, _("Skip"), _("Add"), NULL, _("Add your own"),
                _("randomness?"), NULL, _("Coin flips or dice,"),
-               _("mixed with the block's"), _("random numbers."));
+               _("added to the seed."), NULL);
+  layoutLast = show_state;
 }
 
 static void show_ent_kind(void) {
   layoutDialog(&bmp_icon_question, _("Coin"), _("Dice"), NULL,
                _("Coin flips or dice?"), NULL, _("256 flips of a real coin"),
                _("or 99 rolls of a"), _("real 6-sided die."), NULL);
+  layoutLast = show_state;
 }
 
 // The last inputs, newest on the right, as many as fit.
@@ -182,6 +193,7 @@ static void draw_count(const char *what, size_t total) {
 }
 
 static void show_coin(void) {
+  layoutLast = show_state;  // not the home screen
   oledClear();
   draw_count(_("Flip "), COIN_FLIPS);
   draw_history(12);
@@ -202,6 +214,7 @@ static const char *dice_label(int i) {
 }
 
 static void show_dice(void) {
+  layoutLast = show_state;  // not the home screen
   oledClear();
   draw_count(_("Roll "), DICE_ROLLS);
   draw_history(12);
@@ -225,12 +238,42 @@ static void show_running(void) {
   layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("Setting up the"),
                _("key block."), NULL, _("Follow the steps on"),
                _("its own screen."), NULL);
+  layoutLast = show_state;
+}
+
+// The screen of the current step. Messages from the PC end with the home
+// screen (fsm.c), so the poll draws the step again when that happened.
+static void show_state(void) {
+  layoutLast = show_state;  // this step's screen (not the home screen)
+  switch (state) {
+    case S_PROMPT:
+      show_prompt();
+      break;
+    case S_ENT_ASK:
+      show_ent_ask();
+      break;
+    case S_ENT_KIND:
+      show_ent_kind();
+      break;
+    case S_ENT_COIN:
+      show_coin();
+      break;
+    case S_ENT_DICE:
+      show_dice();
+      break;
+    case S_RUNNING:
+      show_running();
+      break;
+    default:
+      break;
+  }
 }
 
 static void show_result(const char *line1, const char *line2) {
   layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), line1, line2,
                NULL, NULL, NULL);
   state = S_RESULT;
+  release_screen();
   result_until_ms = timer_ms() + RESULT_SHOW_MS;
 }
 
@@ -342,6 +385,7 @@ static void start_setup(void) {
   const PhylaxStackEntry *e = find_uid(target_uid);
   if (e == NULL || e->addr == PHYLAX_ADDR_NONE) {
     state = S_IDLE;
+    release_screen();
     return;
   }
   target_addr = e->addr;
@@ -390,6 +434,7 @@ void phylax_setup_abort(void) {
   if (state == S_RUNNING) end_conversation(true);
   forget_user_entropy();
   if (state != S_IDLE) state = S_IDLE;
+  release_screen();
 }
 
 static void ask_entropy(void) {
@@ -404,6 +449,7 @@ static void answer(bool yes) {
   } else {
     decline(target_uid);
     state = S_IDLE;
+    release_screen();
   }
 }
 
@@ -545,11 +591,14 @@ bool phylax_setup_poll(void) {
       if (e == NULL || (e->hello.flags & PHYLAX_HELLO_INITIALIZED)) {
         forget_user_entropy();
         state = S_IDLE;  // removed, or set up some other way meanwhile
+        release_screen();
         return false;
       }
+      if (layoutLast == layoutHomescreen) show_state();
       return true;
     }
     case S_RUNNING:
+      if (layoutLast == layoutHomescreen) show_state();
       if (find_uid(target_uid) == NULL) {
         // Removed half-way: it starts again from scratch when re-attached.
         phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
@@ -560,6 +609,7 @@ bool phylax_setup_poll(void) {
     case S_RESULT:
       if ((int32_t)(timer_ms() - result_until_ms) < 0) return true;
       state = S_IDLE;
+      release_screen();
       return false;
   }
   return false;
