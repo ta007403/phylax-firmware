@@ -20,6 +20,7 @@
 #include "phylax_relay.h"
 #include "phylax_stack.h"
 #include "phylax_wallet.h"
+#include "rng.h"
 #include "timer.h"
 #include "usb.h"
 #include "version.h"
@@ -339,17 +340,24 @@ void phylax_bus_send_reply_packet(const uint8_t *packet) {
   phylax_bus_send(reply_to, PHYLAX_MSG_TREZOR, packet, USB_PACKET_SIZE);
 }
 
-// HELLO is sent after a short delay picked from the block's id, so blocks
-// that hear the same DISCOVER do not all answer at the same moment.
-#define HELLO_SLOT_MS 3
+// HELLO is sent in one of HELLO_SLOTS time slots after DISCOVER, picked at
+// random every time, so blocks that hear the same DISCOVER do not all answer
+// at once. On RS485 two answers in the same slot destroy each other; with a
+// new slot each round they are heard on a later DISCOVER. A slot fits a
+// HELLO (30 bytes = 1.2 ms at 250 kbit/s) plus the quiet time before sending.
+#define HELLO_SLOT_MS 4
+#define HELLO_SLOTS 32
 static bool hello_pending = false;
 static uint32_t hello_at_ms = 0;
 
 static void key_on_discover(void) {
   uint8_t uid[PHYLAX_UID_SIZE];
   my_uid(uid);
+  // The id is mixed in because the emulator's RNG is the same in every
+  // emulated block.
+  uint32_t slot = (random32() + uid[PHYLAX_UID_SIZE - 1]) % HELLO_SLOTS;
   hello_pending = true;
-  hello_at_ms = timer_ms() + (uid[PHYLAX_UID_SIZE - 1] % 16) * HELLO_SLOT_MS;
+  hello_at_ms = timer_ms() + slot * HELLO_SLOT_MS;
 }
 
 static void key_send_hello(void) {

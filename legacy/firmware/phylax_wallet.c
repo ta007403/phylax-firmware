@@ -32,6 +32,11 @@
 #define REQUEST_RETRIES 3
 #define XPUB_TIMEOUT_MS 10000
 #define RETRY_PAUSE_MS 5000  // after a failed fetch, or a block not answering
+// A new wallet is offered only once the blocks present have stayed the same
+// this long: blocks are found one by one (each answers DISCOVER in a random
+// slot, and boards power up at slightly different times), so without it the
+// first pair found would be offered before the rest of the stack shows up.
+#define STACK_SETTLE_MS (PHYLAX_DISCOVER_INTERVAL_MS + 500)
 
 // ------------------------------------------------------------ state
 
@@ -731,7 +736,21 @@ static void check_stack(void) {
     return;
   }
 
-  // 2. A new combination of 2..3 blocks: offer to create a wallet.
+  // 2. A new combination of 2..3 blocks: offer to create a wallet, once the
+  // stack has settled.
+  static uint32_t seen_fps[PHYLAX_STACK_MAX + 1];
+  static int seen_n = -1;
+  static uint32_t seen_since_ms = 0;
+  bool same_as_seen = seen_n == n;
+  for (int i = 0; same_as_seen && i < n; i++) {
+    if (seen_fps[i] != fps[i]) same_as_seen = false;
+  }
+  if (!same_as_seen) {
+    memcpy(seen_fps, fps, sizeof(fps[0]) * (size_t)n);
+    seen_n = n;
+    seen_since_ms = timer_ms();
+  }
+  bool settled = timer_ms() - seen_since_ms >= STACK_SETTLE_MS;
   bool was_declined = declined_n == n;
   for (int i = 0; was_declined && i < n; i++) {
     if (declined[i] != fps[i]) was_declined = false;
@@ -741,7 +760,7 @@ static void check_stack(void) {
   if (!was_declined) declined_n = 0;
   bool may_try = !retry_pause || (int32_t)(timer_ms() - retry_after_ms) >= 0;
   if (n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
-      free_slot() >= 0 && may_try) {
+      free_slot() >= 0 && may_try && settled) {
     retry_pause = false;
     start_new_wallet(fps, addrs, n);
     return;

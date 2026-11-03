@@ -38,6 +38,7 @@ ifeq ($(EMULATOR),1)
 OBJS += udp.o
 else
 OBJS += usb.o
+OBJS += phylax_uart.o
 OBJS += bl_check.o
 OBJS += otp.o
 OBJS += header.o

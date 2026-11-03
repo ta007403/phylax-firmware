@@ -15,9 +15,34 @@ real savings on it.**
 | main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to each key block in turn (pass 1), then signs itself, placing each key block's signature in the slot whose key verifies it (pass 2) |
 | key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus; keeps a copy of every saved wallet |
 
-On real hardware the role is chosen at build time with `-DPHYLAX_ROLE=1`
-(main) or `2` (key). The RS485 transport is not written yet, so device
-builds behave as stock for now.
+On real hardware the role is chosen at build time (`PHYLAX_BUILD_ROLE=main`
+or `key`).
+
+### The bus on real hardware (Phylax_Version_3 board)
+
+| | |
+|---|---|
+| Transceiver | MAX3485 on USART2: PA2 = TX -> DI, PA3 = RX <- RO |
+| Direction | PA1 drives DE and /RE together (R8 10k pull-down = receive) |
+| Speed | 250 kbit/s, 8N1 (a 64-byte Trezor packet takes about 3 ms) |
+| Connector J1 | 1 = +5V, 2 = GND, 3 = A, 4 = B |
+| Termination | close JP1 (120R) on the **main block only** |
+
+Received bytes go from the USART2 interrupt into a 2 KB ring buffer in RAM
+and from there to the frame decoder in the main loop. Sending waits until
+the line has been quiet for at least 1 ms, raises PA1, sends the frame,
+waits for the last stop bit and lowers PA1. Only the main block starts a
+conversation; key blocks answer, and answer DISCOVER in one of 32 random
+4 ms slots, a new slot every round.
+
+The UART interrupt is set up while the firmware is still privileged (before
+the MPU is enabled), so the bus needs firmware signed for the bootloader on
+the board, i.e. PHYLAX firmware on a PHYLAX bootloader. Unsigned firmware
+has no bus.
+
+Only the main block is plugged into the PC; it powers the key blocks over
+the bus +5V (each board's USB VBUS reaches +5V through a BAT60 diode, so a
+second USB cable cannot feed back into a PC).
 
 ## Emulator settings
 
@@ -192,8 +217,10 @@ block cancels it and tries again later.
   has one message parser, so the two conversations would mix. On real
   hardware the key blocks' USB ports are covered; the emulator tests read a
   key block's xpub before the main block starts.
-- The RS485 (USART2, PA1-PA3) transport is not written yet, so device builds
-  behave as stock Trezor firmware until it is.
+- The RS485 transport is built but not yet tried on hardware.
+- Bytes that arrive while the CPU is stalled by a flash erase (the
+  interrupt code lives in flash) are lost; the frame fails its CRC and the
+  request is retried.
 - A deleted wallet's hidden record is overwritten when all 8 slots are
   needed; a block that missed that delete could then bring the wallet back.
 

@@ -26,6 +26,7 @@
 #include "messages.h"
 #include "phylax_bus.h"
 #include "phylax_relay.h"
+#include "phylax_uart.h"
 #include "random_delays.h"
 #include "timer.h"
 #include "trezor.h"
@@ -324,6 +325,7 @@ static void main_rx_callback(usbd_device *dev, uint8_t ep) {
       USB_PACKET_SIZE)
     return;
   debugLog(0, "", "main_rx_callback");
+  phylax_note_host_input();  // PHYLAX: answer this one over USB, not the bus
   if (!tiny) {
     msg_read(buf, sizeof(buf));
   } else {
@@ -389,6 +391,18 @@ static const struct usb_bos_descriptor bos_descriptor = {
     .bNumDeviceCaps = sizeof(capabilities) / sizeof(capabilities[0]),
     .capabilities = capabilities};
 
+// PHYLAX: a key block answers the main block over the bus when the request
+// came from there, and the PC over USB otherwise.
+static void write_main_packet(const uint8_t *data) {
+  if (phylax_role() == PHYLAX_ROLE_KEY && phylax_reply_via_bus()) {
+    phylax_bus_send_reply_packet(data);
+    return;
+  }
+  while (usbd_ep_write_packet(usbd_dev, ENDPOINT_ADDRESS_MAIN_IN, data,
+                              USB_PACKET_SIZE) != USB_PACKET_SIZE) {
+  }
+}
+
 void usbInit(void) {
   usbd_dev = usbd_init(&otgfs_usb_driver, &dev_descr, &config, usb_strings,
                        sizeof(usb_strings) / sizeof(*usb_strings),
@@ -411,6 +425,7 @@ void usbPoll(void) {
     return;
   }
 
+  phylax_uart_poll();  // PHYLAX: bytes from the RS485 bus
   phylax_poll();
 
   static const uint8_t *data;
@@ -418,11 +433,7 @@ void usbPoll(void) {
   usbd_poll(usbd_dev);
   // write pending data
   data = msg_out_data();
-  if (data) {
-    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_ADDRESS_MAIN_IN, data,
-                                USB_PACKET_SIZE) != USB_PACKET_SIZE) {
-    }
-  }
+  if (data) write_main_packet(data);
 #if U2F_ENABLED
   data = u2f_out_data();
   if (data) {
@@ -463,6 +474,8 @@ void waitAndProcessUSBRequests(uint32_t millis) {
     if (usbd_dev != NULL) {
       usbd_poll(usbd_dev);
     }
+    phylax_uart_poll();  // PHYLAX: keep the bus moving while waiting
+    phylax_poll();
   }
 }
 
@@ -473,11 +486,7 @@ void usbFlush(uint32_t millis) {
 
   static const uint8_t *data;
   data = msg_out_data();
-  if (data) {
-    while (usbd_ep_write_packet(usbd_dev, ENDPOINT_ADDRESS_MAIN_IN, data,
-                                USB_PACKET_SIZE) != USB_PACKET_SIZE) {
-    }
-  }
+  if (data) write_main_packet(data);
 
   uint32_t start = timer_ms();
 
@@ -496,11 +505,8 @@ void usbDeliverPacket(const uint8_t *packet) {
   }
 }
 
-// PHYLAX: the RS485 (USART) transport is not written yet. Until then the
-// device has no bus, and phylax_role() is PHYLAX_ROLE_STOCK unless the
-// firmware is built with -DPHYLAX_ROLE=...
+// PHYLAX: the block bus over RS485 (phylax_uart.c). Stock builds never set
+// it up, so this fails and the bus stays silent.
 bool phylax_transport_send(const uint8_t *data, size_t len) {
-  (void)data;
-  (void)len;
-  return false;
+  return phylax_uart_send(data, len);
 }

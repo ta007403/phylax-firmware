@@ -34,6 +34,9 @@
 #include "setup.h"
 #include "timer.h"
 #include "usb.h"
+#if PHYLAX_DEVICE_FIRMWARE
+#include "phylax_uart.h"
+#endif
 #include "util.h"
 
 #if !EMULATOR
@@ -179,6 +182,11 @@ int main(void) {
   if (!is_mode_unprivileged()) {
     collect_hw_entropy(true);
     timer_init();
+#if PHYLAX_DEVICE_FIRMWARE
+    // PHYLAX: the RS485 bus needs the NVIC, reachable only before the MPU
+    // takes privileges away below.
+    phylax_uart_init();
+#endif
 #ifdef APPVER
     // enable MPU (Memory Protection Unit)
     mpu_config_firmware();
