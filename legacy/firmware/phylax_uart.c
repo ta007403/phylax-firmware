@@ -17,6 +17,11 @@
 #include "phylax_bus.h"
 #include "timer.h"
 
+// The SysTick counter behind timer_ms(). In the firmware timer_ms() is a
+// supervisor call (SVC), and an SVC from inside an interrupt handler of the
+// same priority escalates to a HardFault, so the interrupt reads it directly.
+extern volatile uint32_t system_millis;
+
 // The clock set up by the bootloader (setup.c): 120 MHz, APB1 = 120 / 4.
 #define APB1_HZ 30000000
 // Oversampling by 16: BRR = APB1 / baud = 120 = 7.5 -> exactly 250000 baud.
@@ -67,6 +72,7 @@ void phylax_uart_init(void) {
 }
 
 // Runs privileged (handler mode) even after the firmware dropped privileges.
+// Must not make supervisor calls (timer_ms() and the like).
 void usart2_isr(void) {
   uint32_t sr = USART2_SR;
   if ((sr & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)) == 0) {
@@ -74,7 +80,7 @@ void usart2_isr(void) {
   }
   // Reading DR after SR clears RXNE and the error flags.
   uint8_t byte = (uint8_t)USART2_DR;
-  rx_last_ms = timer_ms();
+  rx_last_ms = system_millis;  // never timer_ms() here, see above
   if (sr & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
     // A damaged or lost byte: the frame's CRC fails and it is dropped; the
     // decoder finds the next 0xAA 0x55.
