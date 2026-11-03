@@ -118,11 +118,14 @@ static void bootloader_loop(void) {
                              VERSION_MINOR) "." VERSTR(VERSION_PATCH),
                          FONT_STANDARD);
   } else {
-    oledDrawStringCenter(90, 10, "Welcome!", FONT_STANDARD);
 #if PHYLAX_SIGNING
-    oledDrawStringCenter(90, 30, "Install PHYLAX", FONT_STANDARD);
+    // One short word per line: "Install PHYLAX" on one line ran into the
+    // logo (the text is centred at x = 90, the logo ends at x = 63).
+    oledDrawStringCenter(90, 10, "Install", FONT_STANDARD);
+    oledDrawStringCenter(90, 30, "PHYLAX", FONT_STANDARD);
     oledDrawStringCenter(90, 50, "firmware.", FONT_STANDARD);
 #else
+    oledDrawStringCenter(90, 10, "Welcome!", FONT_STANDARD);
     oledDrawStringCenter(90, 30, "Please visit", FONT_STANDARD);
     oledDrawStringCenter(90, 50, "trezor.io/start", FONT_STANDARD);
 #endif
