@@ -76,8 +76,8 @@ static void show_ask(void) {
 
 static void show_kind(void) {
   layoutDialog(&bmp_icon_question, _("Coin"), _("Dice"), NULL,
-               _("Coin flips or dice?"), NULL, _("256 flips of a real coin"),
-               _("or 99 rolls of a"), _("real 6-sided die."), NULL);
+               _("Coin flips or dice?"), NULL, _("256 flips of real coin"),
+               _("or 99 rolls of a"), _("6 side dice."), NULL);
 }
 
 // The last inputs, newest on the right, as many as fit.
