@@ -80,14 +80,16 @@ static void show_kind(void) {
                _("or 99 rolls of a"), _("6 side dice."), NULL);
 }
 
-// The last inputs, newest on the right, as many as fit.
+// The last inputs, newest on the right, as many as fit on the screen
+// ("T" is wider than "H", so the count depends on what was entered).
 static void draw_history(int y) {
-  const size_t fit = 20;
-  size_t from = count > fit ? count - fit : 0;
-  char line[21];
-  size_t n = count - from;
-  memcpy(line, inputs + from, n);
-  line[n] = '\0';
+  char line[24];
+  size_t n = count < sizeof(line) - 1 ? count : sizeof(line) - 1;
+  for (;; n--) {
+    memcpy(line, inputs + count - n, n);
+    line[n] = '\0';
+    if (n == 0 || oledStringWidth(line, FONT_STANDARD) <= OLED_WIDTH - 2) break;
+  }
   oledDrawStringCenter(OLED_WIDTH / 2, y, n ? line : "-", FONT_STANDARD);
   memzero(line, sizeof(line));
 }
