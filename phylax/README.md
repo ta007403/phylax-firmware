@@ -1,6 +1,6 @@
-# PHYLAX Blocks
+# PHYLAX Snap
 
-Snap-together multisig built on Trezor One (legacy) firmware v1.14.1. Each
+(Formerly PHYLAX Blocks; the code still uses `phylax_` names.) Snap-together multisig built on Trezor One (legacy) firmware v1.14.1. Each
 key block holds one seed; the main block talks to the PC over USB and to the
 other blocks over the PHYLAX bus (RS485 on hardware, UDP in the emulator).
 
