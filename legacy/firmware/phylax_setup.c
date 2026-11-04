@@ -109,7 +109,11 @@ static void release_screen(void) {
   }
 }
 
+// "Set it up?" takes only a press made while it is on screen.
+static PhylaxPressGuard prompt_guard;
+
 static void show_prompt(void) {
+  phylax_press_guard_reset(&prompt_guard);
   layoutDialog(&bmp_icon_question, _("No"), _("Set up"), NULL,
                _("New key block found."), _("Set it up?"), NULL,
                _("You will choose a PIN"), _("and write down 24"),
@@ -334,10 +338,20 @@ void phylax_setup_ui_poll(void) {
     return;
   }
 #endif
-  if (button.YesUp)
+  // Covered (e.g. by the home screen after a PC message): no answer until
+  // the question is drawn again.
+  if (layoutLast != show_state) return;
+  int pressed = phylax_press_guard_poll(&prompt_guard);
+  if (pressed > 0)
     answer(true);
-  else if (button.NoUp)
+  else if (pressed < 0)
     answer(false);
+}
+
+bool phylax_setup_draw_home(void) {
+  if (state != S_PROMPT && state != S_ENT && state != S_RUNNING) return false;
+  show_state();
+  return true;
 }
 
 bool phylax_setup_poll(void) {

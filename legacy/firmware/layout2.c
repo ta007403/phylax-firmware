@@ -30,6 +30,7 @@
 #include "crypto.h"
 #include "gettext.h"
 #include "layout2.h"
+#include "phylax_wallet.h"
 #include "memzero.h"
 #include "nem2.h"
 #include "oled.h"
@@ -324,6 +325,10 @@ void layoutHome(void) {
 }
 
 void layoutHomescreen(void) {
+  // PHYLAX: on a main block the home screen is the wallet status or prompt
+  // (phylax_wallet.c), so a PC request does not flip the screen.
+  if (phylax_wallet_draw_home()) return;
+
   if (layoutLast == layoutHomescreen || layoutLast == layoutScreensaver) {
     oledClear();
   } else {

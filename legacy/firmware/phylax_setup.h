@@ -62,5 +62,8 @@ bool phylax_setup_poll(void);
 void phylax_setup_ui_poll(void);
 // Something with priority (signing, the PC in select mode) took over.
 void phylax_setup_abort(void);
+// The home screen while a setup is going on: draws the setup's screen
+// instead (layoutHomescreen calls it). False when no setup is shown.
+bool phylax_setup_draw_home(void);
 
 #endif

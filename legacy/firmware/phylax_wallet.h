@@ -88,6 +88,11 @@ const PhylaxWalletRec *phylax_wallet_get(int slot, bool *complete);
 // Main loop, after the buttons were read: the "New wallet?" prompt.
 void phylax_wallet_ui_poll(void);
 
+// The main block's home screen: the wallet prompt, a key-block setup, or the
+// wallet status, if any of them is current (layoutHomescreen calls it). False
+// for the plain home screen.
+bool phylax_wallet_draw_home(void);
+
 // --- changes from the PC (fsm_msg_phylax.h confirms them on screen) ---
 #define PHYLAX_WALLET_NAME_MAX 15  // characters a user may choose
 // NULL if `slot` may be renamed to `name`, else why not.

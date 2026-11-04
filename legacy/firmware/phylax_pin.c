@@ -174,6 +174,27 @@ PhylaxButtonEvent phylax_buttons_next(void) {
   return next_event();
 }
 
+void phylax_press_guard_reset(PhylaxPressGuard *g) {
+  g->armed = false;
+  g->pressed = false;
+}
+
+int phylax_press_guard_poll(PhylaxPressGuard *g) {
+  bool held = button.YesDown > 0 || button.NoDown > 0;
+  if (!held && !button.YesUp && !button.NoUp) g->armed = true;
+  if (g->armed && held) g->pressed = true;
+  if (!g->pressed) return 0;
+  if (button.YesUp) {
+    phylax_press_guard_reset(g);
+    return 1;
+  }
+  if (button.NoUp) {
+    phylax_press_guard_reset(g);
+    return -1;
+  }
+  return 0;
+}
+
 bool phylax_buttons_scripted(void) {
 #if EMULATOR
   return emu_keys() != NULL;

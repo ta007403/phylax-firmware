@@ -59,6 +59,17 @@ typedef enum {
 PhylaxButtonEvent phylax_buttons_next(void);
 bool phylax_buttons_scripted(void);
 
+// A Yes/No prompt only takes a press that started after it was drawn: a
+// button already held (or a press meant for an earlier screen) is ignored
+// until both buttons have been seen released. Reset when the prompt is
+// drawn; poll after buttonUpdate(). Returns +1 (right), -1 (left) or 0.
+typedef struct {
+  bool armed;    // both buttons seen released since the prompt was drawn
+  bool pressed;  // a button went down after that
+} PhylaxPressGuard;
+void phylax_press_guard_reset(PhylaxPressGuard *g);
+int phylax_press_guard_poll(PhylaxPressGuard *g);
+
 // Entropy pool: note an event, and mix the pool into 32 bytes of entropy
 // (out = SHA256(out || pool)); the pool is emptied. No events: unchanged.
 void phylax_entropy_note(uint32_t a, uint32_t b);

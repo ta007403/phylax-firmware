@@ -23,6 +23,7 @@
 #include "messages.pb.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
+#include "phylax_pin.h"
 #include "phylax_relay.h"
 #include "phylax_setup.h"
 #include "phylax_stack.h"
@@ -612,19 +613,56 @@ static void start_new_wallet(const uint32_t *fps, const uint8_t *addrs,
 // ------------------------------------------------------------ screens
 // ------------------------------------------------------------ screens
 
+// The status ("<wallet> is ready.", "Attach key block ...") is the main
+// block's home screen: layoutHomescreen() draws it (phylax_wallet_draw_home)
+// so that a PC request, which ends with the home screen, does not replace it
+// for a moment every time Suite asks for the stack.
+static char home_lines[3][24];
+static bool home_status = false;
+
+static void draw_status(void) {
+  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), home_lines[0],
+               home_lines[1][0] ? home_lines[1] : NULL,
+               home_lines[2][0] ? home_lines[2] : NULL, NULL, NULL);
+  layoutLast = layoutHomescreen;  // auto-lock and screensaver as usual
+}
+
 static void show_status(const char *line1, const char *line2,
                         const char *line3) {
   char key[64];
   strlcpy(key, line1, sizeof(key));
   strlcat(key, line2 ? line2 : "", sizeof(key));
   strlcat(key, line3 ? line3 : "", sizeof(key));
-  if (strcmp(key, shown) == 0 && layoutLast == layoutDialog) return;
+  strlcpy(home_lines[0], line1, sizeof(home_lines[0]));
+  strlcpy(home_lines[1], line2 ? line2 : "", sizeof(home_lines[1]));
+  strlcpy(home_lines[2], line3 ? line3 : "", sizeof(home_lines[2]));
+  home_status = true;
+  if (strcmp(key, shown) == 0 && layoutLast == layoutHomescreen) return;
   strlcpy(shown, key, sizeof(shown));
-  layoutDialog(&bmp_icon_info, NULL, NULL, NULL, _("PHYLAX"), line1, line2,
-               line3, NULL, NULL);
+  draw_status();
 }
 
+// No status to show any more: back to the plain home screen.
+static void clear_status(void) {
+  home_status = false;
+  if (shown[0] != '\0' && layoutLast == layoutHomescreen) {
+    shown[0] = '\0';
+    layoutHome();
+  }
+}
+
+// "New ... wallet?" takes only a press made while it is on screen; its
+// screen is marked with prompt_redraw in layoutLast.
+static PhylaxPressGuard prompt_guard;
+static void prompt_draw(void);
+static void prompt_redraw(void) { prompt_draw(); }
+
 static void prompt_show(void) {
+  phylax_press_guard_reset(&prompt_guard);
+  prompt_draw();
+}
+
+static void prompt_draw(void) {
   static char title[24];
   static char fp_lines[3][24];
   strlcpy(title, "New ", sizeof(title));
@@ -640,6 +678,7 @@ static void prompt_show(void) {
   shown[0] = '\0';
   layoutDialog(&bmp_icon_question, _("No"), _("Create"), NULL, title,
                _("Blocks:"), fp_lines[0], fp_lines[1], fp_lines[2], NULL);
+  layoutLast = prompt_redraw;
 }
 
 // An empty slot first; else the oldest deleted wallet's hidden record (a
@@ -709,8 +748,32 @@ void phylax_wallet_ui_poll(void) {
     return;
   }
 #endif
-  if (button.YesUp) prompt_answer(true);
-  else if (button.NoUp) prompt_answer(false);
+  // Not on screen (covered by something else): no answer until it is back.
+  if (layoutLast != prompt_redraw) return;
+  int pressed = phylax_press_guard_poll(&prompt_guard);
+  if (pressed > 0) {
+    prompt_answer(true);
+  } else if (pressed < 0) {
+    prompt_answer(false);
+  }
+}
+
+bool phylax_wallet_draw_home(void) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) return false;
+  if (phylax_setup_draw_home()) return true;
+  if (wstate == W_PROMPT) {
+    prompt_draw();  // the same prompt again; a press already started counts
+    return true;
+  }
+  if (!home_status || !config_isInitialized()) return false;
+  // Backup warnings are on the plain home screen: show that one then.
+  bool no_backup = false, unfinished_backup = false, needs_backup = false;
+  config_getNoBackup(&no_backup);
+  config_getUnfinishedBackup(&unfinished_backup);
+  config_getNeedsBackup(&needs_backup);
+  if (no_backup || unfinished_backup || needs_backup) return false;
+  draw_status();
+  return true;
 }
 
 // What the stack means for the saved wallets: ready, missing a block, or a
@@ -786,12 +849,20 @@ static void check_stack(void) {
       return;
     }
   }
+
+  // Nothing to say about the stack.
+  clear_status();
 }
 
 
 // ------------------------------------------------------------ poll
 
 void phylax_wallet_poll(void) {
+  // The prompt is gone (answered, cancelled, taken over): its screen counts
+  // as a plain dialog again, so the logic below may replace it.
+  if (wstate != W_PROMPT && layoutLast == prompt_redraw) {
+    layoutLast = layoutDialog;
+  }
   // Signing has priority: drop whatever we were doing with a key block.
   if (phylax_relay_state() != PHYLAX_RELAY_IDLE ||
       phylax_selected_block() != PHYLAX_ADDR_NONE) {
