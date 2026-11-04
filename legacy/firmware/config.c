@@ -574,7 +574,20 @@ void config_setHomescreen(const uint8_t *data, uint32_t size) {
   }
 }
 
+#if EMULATOR
+#include <stdlib.h>
+#include <unistd.h>
+#endif
+
 static void get_root_node_callback(uint32_t iter, uint32_t total) {
+#if EMULATOR
+  // PHYLAX tests: PHYLAX_EMU_SLOW_SEED=1 makes the seed computation take as
+  // long as on a real STM32F205 (about 3 s), so PC and bus traffic can
+  // arrive in the middle of it, as on hardware.
+  static int slow = -1;
+  if (slow < 0) slow = getenv("PHYLAX_EMU_SLOW_SEED") != NULL;
+  if (slow) usleep(180000);
+#endif
   waitAndProcessUSBRequests(1);
   layoutProgress(_("Waking up"), 1000 * iter / total);
 }
@@ -624,13 +637,21 @@ const uint8_t *config_getSeed(void) {
       }
     }
     char oldTiny = usbTiny(1);
-    mnemonic_to_seed(mnemonic, passphrase, activeSessionCache->seed,
+    // PHYLAX: the computation takes seconds and processes USB and bus traffic
+    // meanwhile (get_root_node_callback). Mark the seed as cached in the
+    // session it was computed for, even if another session became active.
+    Session *session = activeSessionCache;
+    mnemonic_to_seed(mnemonic, passphrase, session->seed,
                      get_root_node_callback);  // BIP-0039
     memzero(mnemonic, sizeof(mnemonic));
     memzero(passphrase, sizeof(passphrase));
     usbTiny(oldTiny);
-    activeSessionCache->seedCached = sectrue;
-    return activeSessionCache->seed;
+    session->seedCached = sectrue;
+    if (activeSessionCache != session) {
+      // That other session has no seed yet: compute it for that one too.
+      return config_getSeed();
+    }
+    return session->seed;
   } else {
     fsm_sendFailure(FailureType_Failure_NotInitialized,
                     _("Device not initialized"));
