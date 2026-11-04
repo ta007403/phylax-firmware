@@ -209,7 +209,11 @@ def main():
         select(pc, 1)
         k = wait_key(main_blk.session, lambda k: k.locked and k.address == addr,
                      "it to be reported locked")
-        check(k.fingerprint is None, "reported locked, fingerprint hidden", "fingerprint still shown")
+        # A locked block still says who it is (kept from its last unlock;
+        # it is in the descriptors anyway), so the main block can ask to
+        # unlock it instead of saying it is missing.
+        check(k.fingerprint == 0x73C5DA0A, "reported locked, fingerprint still known",
+              f"fingerprint {k.fingerprint}")
         select(pc, addr)
         # Any PIN-protected request unlocks it (Trezor One's Ping does not
         # check the PIN); reading its multisig account key shows nothing.

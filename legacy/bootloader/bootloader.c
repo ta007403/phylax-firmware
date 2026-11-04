@@ -102,6 +102,14 @@ static void __attribute__((noreturn)) load_app(int signed_firmware) {
                    signed_firmware);
 }
 
+// Centre of the text right of the logo. PHYLAX: the logo ends at x = 63 and
+// "Bootloader" (53 px) centred at 90 touched it; 94 leaves a 4 px gap.
+#if PHYLAX_SIGNING
+#define TEXT_X 94
+#else
+#define TEXT_X 90
+#endif
+
 static void bootloader_loop(void) {
   oledClear();
 #if PHYLAX_SIGNING
@@ -111,23 +119,23 @@ static void bootloader_loop(void) {
   oledDrawBitmapFlip(24, 0, &bmp_logo64_half);
 #endif
   if (firmware_present_new()) {
-    oledDrawStringCenter(90, 10, BOOTLOADER_BRAND, FONT_STANDARD);
-    oledDrawStringCenter(90, 30, "Bootloader", FONT_STANDARD);
-    oledDrawStringCenter(90, 50,
+    oledDrawStringCenter(TEXT_X, 10, BOOTLOADER_BRAND, FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 30, "Bootloader", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 50,
                          VERSTR(VERSION_MAJOR) "." VERSTR(
                              VERSION_MINOR) "." VERSTR(VERSION_PATCH),
                          FONT_STANDARD);
   } else {
 #if PHYLAX_SIGNING
     // One short word per line: "Install PHYLAX" on one line ran into the
-    // logo (the text is centred at x = 90, the logo ends at x = 63).
-    oledDrawStringCenter(90, 10, "Install", FONT_STANDARD);
-    oledDrawStringCenter(90, 30, "PHYLAX", FONT_STANDARD);
-    oledDrawStringCenter(90, 50, "firmware.", FONT_STANDARD);
+    // logo.
+    oledDrawStringCenter(TEXT_X, 10, "Install", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 30, "PHYLAX", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 50, "firmware.", FONT_STANDARD);
 #else
-    oledDrawStringCenter(90, 10, "Welcome!", FONT_STANDARD);
-    oledDrawStringCenter(90, 30, "Please visit", FONT_STANDARD);
-    oledDrawStringCenter(90, 50, "trezor.io/start", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 10, "Welcome!", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 30, "Please visit", FONT_STANDARD);
+    oledDrawStringCenter(TEXT_X, 50, "trezor.io/start", FONT_STANDARD);
 #endif
   }
   oledRefresh();

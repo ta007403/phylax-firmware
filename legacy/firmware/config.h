@@ -112,6 +112,9 @@ bool config_getU2FRoot(HDNode *node);
 bool config_getRootNode(HDNode *node, const char *curve);
 
 bool config_getLabel(char *dest, uint16_t dest_size);
+// PHYLAX: the seed fingerprint, kept for when the block is locked.
+bool config_getPhylaxFingerprint(uint32_t *fingerprint);
+void config_setPhylaxFingerprint(uint32_t fingerprint);
 void config_setLabel(const char *label);
 
 bool config_getLanguage(char *dest, uint16_t dest_size);

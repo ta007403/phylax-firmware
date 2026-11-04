@@ -176,14 +176,17 @@ static int present_fps(uint32_t fps[PHYLAX_STACK_MAX + 1],
   int n = 0;
   PhylaxHello me;
   phylax_my_hello(&me);
-  if (me.flags & PHYLAX_HELLO_HAS_FP) {
+  // A locked block still says who it is, but cannot take part until it is
+  // unlocked: it does not count as present.
+  if ((me.flags & PHYLAX_HELLO_HAS_FP) && !(me.flags & PHYLAX_HELLO_LOCKED)) {
     fps[n] = me.fingerprint;
     addrs[n++] = 0;
   }
   const PhylaxStackEntry *e;
   for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
     if (e->hello.kind == PHYLAX_KIND_KEY &&
-        (e->hello.flags & PHYLAX_HELLO_HAS_FP)) {
+        (e->hello.flags & PHYLAX_HELLO_HAS_FP) &&
+        !(e->hello.flags & PHYLAX_HELLO_LOCKED)) {
       fps[n] = e->hello.fingerprint;
       addrs[n++] = e->addr;
     }
@@ -776,6 +779,31 @@ bool phylax_wallet_draw_home(void) {
   return true;
 }
 
+// A key block with this fingerprint is in the stack, but locked.
+static bool key_block_locked(uint32_t fingerprint) {
+  const PhylaxStackEntry *e;
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->hello.kind == PHYLAX_KIND_KEY &&
+        (e->hello.flags & PHYLAX_HELLO_HAS_FP) &&
+        (e->hello.flags & PHYLAX_HELLO_LOCKED) &&
+        e->hello.fingerprint == fingerprint) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool phylax_wallet_uses_fingerprint(uint32_t fingerprint) {
+  for (int i = 0; i < PHYLAX_WALLET_SLOTS; i++) {
+    const PhylaxWalletRec *w = &wallets[i];
+    if (!live(w)) continue;
+    for (int k = 0; k < w->n; k++) {
+      if (w->keys[k].fingerprint == fingerprint) return true;
+    }
+  }
+  return false;
+}
+
 // What the stack means for the saved wallets: ready, missing a block, or a
 // new combination to offer.
 static void check_stack(void) {
@@ -842,10 +870,16 @@ static void check_stack(void) {
       }
     }
     if (missing == 1) {
+      // "Attach key block 2b69c617" is wider than the screen: two lines.
       static char line[24];
-      strlcpy(line, _("Attach key block "), sizeof(line));
-      hex32(line + strlen(line), missing_fp);
-      show_status(line, _("to use wallet"), w->name);
+      hex32(line, missing_fp);
+      if (key_block_locked(missing_fp)) {
+        strlcat(line, _(" is locked"), sizeof(line));
+        show_status(_("Key block"), line, w->name);
+      } else {
+        strlcat(line, _(" for"), sizeof(line));
+        show_status(_("Attach key block"), line, w->name);
+      }
       return;
     }
   }

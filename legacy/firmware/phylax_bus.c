@@ -256,10 +256,16 @@ void phylax_my_hello(PhylaxHello *h) {
   h->flags |= PHYLAX_HELLO_INITIALIZED;
   if (!session_isUnlocked()) {
     h->flags |= PHYLAX_HELLO_LOCKED;
+    // Who it is, from its last unlock (not secret: it is in the descriptors
+    // of its wallets). The main block then asks to unlock it.
+    if (config_getPhylaxFingerprint(&h->fingerprint)) {
+      h->flags |= PHYLAX_HELLO_HAS_FP;
+    }
     return;
   }
   if (my_fingerprint(h->uid, &h->fingerprint)) {
     h->flags |= PHYLAX_HELLO_HAS_FP;
+    config_setPhylaxFingerprint(h->fingerprint);
   }
 }
 

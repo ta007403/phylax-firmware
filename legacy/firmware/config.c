@@ -80,6 +80,9 @@ static const uint32_t META_MAGIC_V10 = 0xFFFFFFFF;
 #define KEY_NODE (15 | APP)                                        // node
 #define KEY_IMPORTED (16 | APP)                                    // bool
 #define KEY_U2F_ROOT (17 | APP | FLAG_PUBLIC_SHIFTED)              // node
+// PHYLAX: seed fingerprint, readable while locked (it is in every descriptor
+// of the block anyway), so a locked block can still say who it is.
+#define KEY_PHYLAX_FINGERPRINT (18 | APP | FLAG_PUBLIC_SHIFTED)    // uint32
 #define KEY_DEBUG_LINK_PIN (255 | APP | FLAG_PUBLIC_SHIFTED)       // string(10)
 // clang-format on
 
@@ -733,6 +736,16 @@ bool config_getRootNode(HDNode *node, const char *curve) {
     fsm_sendFailure(FailureType_Failure_NotInitialized, _("Unsupported curve"));
   }
   return result;
+}
+
+bool config_getPhylaxFingerprint(uint32_t *fingerprint) {
+  return sectrue == config_get_uint32(KEY_PHYLAX_FINGERPRINT, fingerprint);
+}
+
+void config_setPhylaxFingerprint(uint32_t fingerprint) {
+  uint32_t stored = 0;
+  if (config_getPhylaxFingerprint(&stored) && stored == fingerprint) return;
+  storage_set(KEY_PHYLAX_FINGERPRINT, &fingerprint, sizeof(fingerprint));
 }
 
 bool config_getLabel(char *dest, uint16_t dest_size) {

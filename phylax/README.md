@@ -211,6 +211,28 @@ at. The main block's own background requests (fetching xpubs for a new
 wallet) never prompt the user: if a key block asks for anything, the main
 block cancels it and tries again later.
 
+### A locked key block
+
+A key block locks itself after a while, like any Trezor One. It still tells
+the main block who it is: its seed fingerprint is kept in its public storage
+from its last unlock (it is in the descriptor of every wallet it is part of;
+a wipe erases it). The main block does not count a locked block as present,
+says "Key block 2b69c617 is locked" for the wallet that needs it, and asks
+**"Key block 2b69c617 is locked. Unlock it with its PIN on its own buttons?"**
+(Later / Unlock). On Unlock the main block sends the key block a
+PIN-protected request (GetPublicKey m/0', result discarded) with
+`LOCAL_UI(1)`, so the PIN is entered on the key block's own buttons, never on
+the PC; Cancel on the main block stops it. "Later" is not asked again until
+that block is unplugged or locks again after an unlock.
+
+### Screens
+
+On a main block the home screen is the PHYLAX prompt, setup step or status,
+so the PC's requests (which all end with the home screen; PHYLAX Suite asks
+every 2-3 s) do not flip the screen. A prompt takes only a press made while it
+is on screen, started after it was drawn. With buttons, a dialog has room for
+five lines of text.
+
 ## Known limits
 
 - A key block must not be driven over USB and the bus at the same time: it
@@ -242,6 +264,9 @@ uv run --with embit python ../phylax/tests/test_setup.py      # set up a key blo
 uv run --with embit python ../phylax/tests/test_rename.py     # rename and delete wallets from the PC, confirmed on the main block
 uv run --with embit python ../phylax/tests/test_entropy.py --mode coin        # coin/dice when setting up a key block
 uv run --with embit python ../phylax/tests/test_reset_entropy.py --mode coin  # coin/dice when the PC creates a wallet
+uv run --with embit python ../phylax/tests/test_receive.py    # a wallet's receive address on the main block
+uv run --with embit python ../phylax/tests/test_screen.py     # the screen stays put while the PC polls
+uv run --with embit python ../phylax/tests/test_unlock.py     # a locked key block unlocked from the main block
 ```
 
 Add `--headless` to a single test to run it without emulator windows.

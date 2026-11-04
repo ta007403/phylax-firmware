@@ -93,6 +93,9 @@ void phylax_wallet_ui_poll(void);
 // for the plain home screen.
 bool phylax_wallet_draw_home(void);
 
+// A saved wallet has a key with this seed fingerprint.
+bool phylax_wallet_uses_fingerprint(uint32_t fingerprint);
+
 // --- changes from the PC (fsm_msg_phylax.h confirms them on screen) ---
 #define PHYLAX_WALLET_NAME_MAX 15  // characters a user may choose
 // NULL if `slot` may be renamed to `name`, else why not.
