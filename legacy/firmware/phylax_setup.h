@@ -49,6 +49,7 @@
 #define __PHYLAX_SETUP_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Prompting or running a setup: nothing else may talk to key blocks or use
 // the screen.
@@ -62,6 +63,10 @@ bool phylax_setup_poll(void);
 void phylax_setup_ui_poll(void);
 // Something with priority (signing, the PC in select mode) took over.
 void phylax_setup_abort(void);
+
+// From the PC (PhylaxUnlockBlock): unlock the locked key block at this bus
+// address, its PIN on its own buttons. NULL if started, else why not.
+const char *phylax_setup_request_unlock(uint8_t addr);
 // The home screen while a setup is going on: draws the setup's screen
 // instead (layoutHomescreen calls it). False when no setup is shown.
 bool phylax_setup_draw_home(void);

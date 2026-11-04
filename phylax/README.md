@@ -119,6 +119,10 @@ In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 - `PhylaxDeleteWallet(slot)` (7708): "Delete wallet <name> from every
   block?", confirmed on the main block. Only the record goes (fingerprints
   and xpubs); the coins stay safe and the seeds can rebuild the descriptor.
+- `PhylaxUnlockBlock(address)` (7709): wake up (unlock) the locked key block
+  at that bus address, as after "Unlock" on the main block's own prompt: the
+  PIN goes on the key block's own buttons. Answered at once; the stack shows
+  the block unlocked when it is done. PHYLAX Suite's "Wake up" button.
 
 Both raise the wallet's generation, so the change reaches every block's copy,
 including blocks attached later with an older copy. A deleted wallet stays
@@ -267,7 +271,14 @@ uv run --with embit python ../phylax/tests/test_reset_entropy.py --mode coin  # 
 uv run --with embit python ../phylax/tests/test_receive.py    # a wallet's receive address on the main block
 uv run --with embit python ../phylax/tests/test_screen.py     # the screen stays put while the PC polls
 uv run --with embit python ../phylax/tests/test_unlock.py     # a locked key block unlocked from the main block
+uv run --with embit python ../phylax/tests/test_pin_screen.py # the PIN grid stays on screen
+uv run --with embit python ../phylax/tests/test_pin_seed.py   # the right key right after the PIN (no nested seed computation)
+uv run --with embit python ../phylax/tests/test_wake.py       # wake up a locked key block from the PC
+uv run --with embit python ../phylax/tests/test_missing_sig.py # never a half-signed transaction
 ```
+
+The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device
+(`legacy/Makefile.include`), so re-entrancy bugs show up in these tests too.
 
 Add `--headless` to a single test to run it without emulator windows.
 

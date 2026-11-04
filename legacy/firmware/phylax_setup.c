@@ -124,11 +124,12 @@ static void prune_declined(void) {
   }
 }
 
+// A locked key block with a seed. It reports its fingerprint only if it was
+// unlocked at least once since its firmware was installed.
 static bool locked_key_block(const PhylaxStackEntry *e) {
   return e->hello.kind == PHYLAX_KIND_KEY && e->addr != PHYLAX_ADDR_NONE &&
          (e->hello.flags & PHYLAX_HELLO_INITIALIZED) &&
-         (e->hello.flags & PHYLAX_HELLO_LOCKED) &&
-         (e->hello.flags & PHYLAX_HELLO_HAS_FP);
+         (e->hello.flags & PHYLAX_HELLO_LOCKED);
 }
 
 static bool still_locked(const uint8_t *uid) {
@@ -140,8 +141,11 @@ static bool still_locked(const uint8_t *uid) {
 static const PhylaxStackEntry *find_locked_wallet_block(void) {
   const PhylaxStackEntry *e;
   for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    // Without a fingerprint it cannot say which wallet it belongs to; ask
+    // anyway, or it could never be unlocked from here.
     if (locked_key_block(e) && !is_later(e->hello.uid) &&
-        phylax_wallet_uses_fingerprint(e->hello.fingerprint)) {
+        (!(e->hello.flags & PHYLAX_HELLO_HAS_FP) ||
+         phylax_wallet_uses_fingerprint(e->hello.fingerprint))) {
       return e;
     }
   }
@@ -162,6 +166,31 @@ static const PhylaxStackEntry *find_blank_key_block(void) {
 }
 
 // ------------------------------------------------------------ screens
+
+static char fp_text[9];
+static char fp_line[24];  // "Key block 73c5da0a"
+
+// The names on the unlock screens: its fingerprint, or "0x10" (its bus
+// address) if it does not report one yet.
+static void name_unlock_target(const PhylaxStackEntry *e) {
+  static const char hexd[] = "0123456789abcdef";
+  if (e->hello.flags & PHYLAX_HELLO_HAS_FP) {
+    target_fp = e->hello.fingerprint;
+    for (int i = 0; i < 8; i++) {
+      fp_text[i] = hexd[(target_fp >> (28 - 4 * i)) & 0xF];
+    }
+    fp_text[8] = '\0';
+  } else {
+    target_fp = 0;
+    fp_text[0] = '0';
+    fp_text[1] = 'x';
+    fp_text[2] = hexd[(e->addr >> 4) & 0xF];
+    fp_text[3] = hexd[e->addr & 0xF];
+    fp_text[4] = '\0';
+  }
+  strlcpy(fp_line, _("Key block "), sizeof(fp_line));
+  strlcat(fp_line, fp_text, sizeof(fp_line));
+}
 
 static void show_state(void);
 
@@ -184,8 +213,6 @@ static void show_prompt(void) {
 }
 
 // With buttons, five lines fit; a sixth runs into them.
-static char fp_text[9];
-static char fp_line[24];  // "Key block 73c5da0a"
 
 static void show_unlock_prompt(void) {
   layoutDialog(&bmp_icon_question, _("Later"), _("Unlock"), NULL, fp_line,
@@ -545,6 +572,27 @@ void phylax_setup_ui_poll(void) {
     answer(false);
 }
 
+const char *phylax_setup_request_unlock(uint8_t addr) {
+  // A prompt on the main block ("Unlock it?", "Set it up?") gives way: it
+  // comes back later if still needed. A setup or unlock in progress does not.
+  if (state != S_IDLE && state != S_RESULT && state != S_PROMPT) {
+    return _("The main block is busy with a key block");
+  }
+  const PhylaxStackEntry *e;
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->addr == addr) break;
+  }
+  if (e == NULL) return _("No key block at that address");
+  if (!locked_key_block(e)) return _("That key block is not locked");
+  job = JOB_UNLOCK;
+  name_unlock_target(e);
+  memcpy(target_uid, e->hello.uid, PHYLAX_UID_SIZE);
+  // Asked for on the PC: no "Unlock it?" on the main block, straight to the
+  // PIN on the key block (Cancel on the main block still stops it).
+  start_unlock();
+  return state == S_RUNNING ? NULL : _("Could not start the unlock");
+}
+
 bool phylax_setup_draw_home(void) {
   if (state != S_PROMPT && state != S_ENT && state != S_RUNNING) return false;
   show_state();
@@ -563,14 +611,7 @@ bool phylax_setup_poll(void) {
         e = find_locked_wallet_block();
         if (e == NULL) return false;
         job = JOB_UNLOCK;
-        target_fp = e->hello.fingerprint;
-        static const char hexd[] = "0123456789abcdef";
-        for (int i = 0; i < 8; i++) {
-          fp_text[i] = hexd[(target_fp >> (28 - 4 * i)) & 0xF];
-        }
-        fp_text[8] = '\0';
-        strlcpy(fp_line, _("Key block "), sizeof(fp_line));
-        strlcat(fp_line, fp_text, sizeof(fp_line));
+        name_unlock_target(e);
       }
       memcpy(target_uid, e->hello.uid, PHYLAX_UID_SIZE);
       state = S_PROMPT;

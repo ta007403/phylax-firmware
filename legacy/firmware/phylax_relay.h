@@ -70,7 +70,10 @@ void phylax_relay_note_key_alive(void);
 // Called by signing.c right after the main block put its own signature into
 // a multisig input (pass 2): adds the key blocks' signatures for that input
 // to the slots whose keys verify them against `digest`.
-void phylax_relay_fill_signatures(const CoinInfo *coin,
+// Returns false if, in pass 2, the input then still lacks signatures (a key
+// block did not sign it): the transaction must not be returned. True outside
+// pass 2 (an ordinary multisig with outside co-signers is not checked).
+bool phylax_relay_fill_signatures(const CoinInfo *coin,
                                   MultisigRedeemScriptType *multisig,
                                   uint32_t input_index, const uint8_t *digest);
 

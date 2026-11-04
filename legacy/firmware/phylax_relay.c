@@ -164,12 +164,13 @@ void phylax_relay_poll(void) {
   }
 }
 
-void phylax_relay_fill_signatures(const CoinInfo *coin,
+bool phylax_relay_fill_signatures(const CoinInfo *coin,
                                   MultisigRedeemScriptType *ms,
                                   uint32_t input_index, const uint8_t *digest) {
-  if (state != PHYLAX_RELAY_PASS2 || input_index >= PHYLAX_MAX_INPUTS) return;
+  if (state != PHYLAX_RELAY_PASS2) return true;
+  if (input_index >= PHYLAX_MAX_INPUTS) return false;
   uint32_t count = cryptoMultisigPubkeyCount(ms);
-  if (count > sizeof(ms->signatures) / sizeof(ms->signatures[0])) return;
+  if (count > sizeof(ms->signatures) / sizeof(ms->signatures[0])) return false;
   while (ms->signatures_count < count) {
     ms->signatures[ms->signatures_count++].size = 0;
   }
@@ -190,6 +191,14 @@ void phylax_relay_fill_signatures(const CoinInfo *coin,
       }
     }
   }
+  // Never return a transaction without every signature the script needs: a
+  // key block skipped as "not part of this wallet" may in fact be one whose
+  // own key came out wrong (it then rejects the inputs the same way).
+  uint32_t filled = 0;
+  for (uint32_t i = 0; i < count; i++) {
+    if (ms->signatures[i].size != 0) filled++;
+  }
+  return filled >= ms->m;
 }
 
 void phylax_relay_on_key_error(const char *text) {

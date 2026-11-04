@@ -155,3 +155,17 @@ message PhylaxSetWalletName {
 message PhylaxDeleteWallet {
     required uint32 slot = 1;
 }
+
+/**
+ * Request: Wake up (unlock) a locked key block, from the PC. The main block
+ * starts its unlock for the key block at this bus address, as after
+ * "Unlock" on its own screen: the user enters the PIN on the key block's own
+ * buttons. Answered at once; the stack (PhylaxGetBlocks) shows the block
+ * unlocked when it is done.
+ * @start
+ * @next Success
+ * @next Failure
+ */
+message PhylaxUnlockBlock {
+    required uint32 address = 1;    // bus address of a locked key block, from PhylaxBlocks
+}

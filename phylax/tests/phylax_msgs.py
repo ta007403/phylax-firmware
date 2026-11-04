@@ -215,3 +215,17 @@ class PhylaxDeleteWallet(protobuf.MessageType):
 
 for _cls in (PhylaxSetWalletName, PhylaxDeleteWallet):
     mapping.DEFAULT_MAPPING.register(_cls)
+
+
+# --- wake up (unlock) a locked key block from the PC ---------------------
+
+
+class PhylaxUnlockBlock(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7709
+    FIELDS = {1: protobuf.Field("address", "uint32", repeated=False, required=True)}
+
+    def __init__(self, *, address: int) -> None:
+        self.address = address
+
+
+mapping.DEFAULT_MAPPING.register(PhylaxUnlockBlock)

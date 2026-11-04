@@ -221,3 +221,21 @@ void fsm_msgPhylaxDeleteWallet(const PhylaxDeleteWallet *msg) {
   fsm_sendSuccess(_("Wallet deleted"));
   layoutHome();
 }
+
+void fsm_msgPhylaxUnlockBlock(const PhylaxUnlockBlock *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  const char *why = msg->address > 0xFF
+                        ? _("No key block at that address")
+                        : phylax_setup_request_unlock((uint8_t)msg->address);
+  if (why != NULL) {
+    fsm_sendFailure(FailureType_Failure_ProcessError, why);
+    layoutHome();
+    return;
+  }
+  fsm_sendSuccess(_("Enter the PIN on the key block"));
+  layoutHome();  // the main block shows "Unlocking key block ..."
+}
