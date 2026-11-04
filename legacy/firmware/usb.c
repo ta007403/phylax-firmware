@@ -467,6 +467,8 @@ char usbTiny(char set) {
   return old;
 }
 
+char usbIsTiny(void) { return tiny; }
+
 void waitAndProcessUSBRequests(uint32_t millis) {
   uint32_t start = timer_ms();
 

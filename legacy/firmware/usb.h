@@ -38,6 +38,8 @@ void usbReconnect(void);
  * Setting to 0 allows processing all messages.
  */
 char usbTiny(char set);
+// PHYLAX: non-zero while a request waits (PIN, button, seed computation).
+char usbIsTiny(void);
 
 /*
  * This will wait given number of milliseconds for arrival of protobuf message.

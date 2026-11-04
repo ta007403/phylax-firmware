@@ -220,6 +220,11 @@ static bool my_fingerprint(const uint8_t uid[PHYLAX_UID_SIZE], uint32_t *fp) {
     *fp = fp_cache.fingerprint;
     return true;
   }
+  // Not while a request waits: it may be the session's seed computation
+  // itself, and mnemonic_to_seed is not re-entrant on the device (its PBKDF2
+  // state is LOCAL_CONFIDENTIAL = static): a second one inside its progress
+  // callback corrupted the session's seed. Asked again after it.
+  if (usbIsTiny()) return false;
   // Derived straight from the mnemonic with an empty passphrase, so it never
   // prompts the user. Slow the first time on real hardware (PBKDF2), then
   // cached.
@@ -544,7 +549,10 @@ void phylax_poll(void) {
     case PHYLAX_ROLE_MAIN:
       phylax_stack_poll();
       phylax_relay_poll();
-      phylax_wallet_poll();
+      // A request is waiting (PIN grid, a button, the seed being computed):
+      // the screen and the stack belong to it. Wallet work (drawing, deriving
+      // the main block's own xpub) waits until it is done.
+      if (!usbIsTiny()) phylax_wallet_poll();
       break;
     case PHYLAX_ROLE_KEY:
       if (hello_pending && (int32_t)(timer_ms() - hello_at_ms) >= 0) {

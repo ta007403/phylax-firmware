@@ -117,6 +117,8 @@ char usbTiny(char set) {
   return old;
 }
 
+char usbIsTiny(void) { return tiny; }
+
 void usbFlush(uint32_t millis) {
   write_main_out();
   usleep(millis * 1000);

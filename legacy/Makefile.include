@@ -16,7 +16,9 @@ OBJDUMP  := true
 AR       := ar
 AS       := as
 
-CONFFLAG ?= -DCONFIDENTIAL=''
+# PHYLAX: LOCAL_CONFIDENTIAL is static as on the device, so the emulator shows
+# the same re-entrancy bugs (a seed computation inside another one's callback).
+CONFFLAG ?= -DCONFIDENTIAL='' -DLOCAL_CONFIDENTIAL=static
 OPTFLAGS ?= -O3
 DBGFLAGS ?= -g3 -ggdb3
 CPUFLAGS ?=
