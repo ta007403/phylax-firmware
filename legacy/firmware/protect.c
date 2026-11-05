@@ -18,8 +18,10 @@
  */
 
 #include "protect.h"
-#include "phylax_bus.h"
-#include "phylax_pin.h"
+
+#if EMULATOR
+#include <stdlib.h>
+#endif
 #include "buttons.h"
 #include "config.h"
 #include "debug.h"
@@ -31,6 +33,8 @@
 #include "messages.h"
 #include "messages.pb.h"
 #include "oled.h"
+#include "phylax_bus.h"
+#include "phylax_pin.h"
 #include "pinmatrix.h"
 #include "usb.h"
 #include "util.h"
@@ -70,7 +74,12 @@ bool protectButton(ButtonRequestType type, bool confirm_only) {
 #if EMULATOR
       // PHYLAX key-block tests only: confirm prompts that came from the main
       // block over the bus (nobody presses the emulated key block's buttons).
-      if (phylax_emu_autoconfirm() && phylax_reply_via_bus()) {
+      // PHYLAX_EMU_CONFIRM_ALL=1 (PC-driven tests, e.g. signing from Suite):
+      // every prompt, as a user pressing "yes" on each screen.
+      static int confirm_all = -1;
+      if (confirm_all < 0)
+        confirm_all = getenv("PHYLAX_EMU_CONFIRM_ALL") != NULL;
+      if (phylax_emu_autoconfirm() && (phylax_reply_via_bus() || confirm_all)) {
         result = true;
         break;
       }
