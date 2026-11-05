@@ -276,6 +276,7 @@ uv run --with embit python ../phylax/tests/test_pin_seed.py   # the right key ri
 uv run --with embit python ../phylax/tests/test_wake.py       # wake up a locked key block from the PC
 uv run --with embit python ../phylax/tests/test_missing_sig.py # never a half-signed transaction
 uv run --with embit python ../phylax/tests/test_sortedmulti.py # sign when the PC lists the keys unsorted (sortedmulti)
+uv run --with embit python ../phylax/tests/test_rbf_recipients.py # replaceable (RBF) send to two recipients with change
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device
