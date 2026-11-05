@@ -73,6 +73,9 @@ void phylax_relay_note_key_alive(void);
 // Returns false if, in pass 2, the input then still lacks signatures (a key
 // block did not sign it): the transaction must not be returned. True outside
 // pass 2 (an ordinary multisig with outside co-signers is not checked).
+// Details of the last incomplete fill, e.g. " in0 k10:71 no-match" (input,
+// key block address, signature length, outcome: none / bad-der / no-match).
+const char *phylax_relay_fill_problem(void);
 bool phylax_relay_fill_signatures(const CoinInfo *coin,
                                   MultisigRedeemScriptType *multisig,
                                   uint32_t input_index, const uint8_t *digest);

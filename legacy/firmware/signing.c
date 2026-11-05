@@ -3178,8 +3178,11 @@ static bool signing_sign_ecdsa(TxInputType *txinput, const uint8_t *private_key,
     // PHYLAX main block (pass 2): add the key blocks' signatures, and stop if
     // the input would still lack one.
     if (!phylax_relay_fill_signatures(coin, &(txinput->multisig), idx1, hash)) {
-      fsm_sendFailure(FailureType_Failure_ProcessError,
-                      _("A key block did not sign"));
+      // e.g. "A key block did not sign: in0 k10:71 no-match"
+      static char text[96];
+      strlcpy(text, _("A key block did not sign:"), sizeof(text));
+      strlcat(text, phylax_relay_fill_problem(), sizeof(text));
+      fsm_sendFailure(FailureType_Failure_ProcessError, text);
       signing_abort();
       return false;
     }

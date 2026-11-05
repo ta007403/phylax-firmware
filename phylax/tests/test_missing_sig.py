@@ -77,9 +77,10 @@ def main():
             outcome = "signed"
         except TrezorFailure as e:
             outcome = e.message or ""
-        check(outcome.endswith("A key block did not sign"),
+        check("A key block did not sign" in outcome,
               "refused: \"A key block did not sign\" (no half-signed transaction)",
               f"outcome: {outcome}")
+        print(f"        message: {outcome}")
 
         print("\nMISSING SIGNATURE TEST PASSED")
         ok = True

@@ -164,6 +164,33 @@ void phylax_relay_poll(void) {
   }
 }
 
+// Why the last fill came out incomplete, for the failure message.
+static char fill_problem[48];
+
+const char *phylax_relay_fill_problem(void) { return fill_problem; }
+
+// "in0 k10:72 no-match" style details, appended while there is room.
+static void note_problem(const char *text) {
+  strlcat(fill_problem, text, sizeof(fill_problem));
+}
+
+static void note_number(uint32_t n) {
+  char digits[11];
+  int i = (int)sizeof(digits) - 1;
+  digits[i] = '\0';
+  do {
+    digits[--i] = (char)('0' + n % 10);
+    n /= 10;
+  } while (n != 0 && i > 0);
+  note_problem(&digits[i]);
+}
+
+static void note_hex(uint8_t n) {
+  static const char hexd[] = "0123456789abcdef";
+  char text[3] = {hexd[n >> 4], hexd[n & 0xF], '\0'};
+  note_problem(text);
+}
+
 bool phylax_relay_fill_signatures(const CoinInfo *coin,
                                   MultisigRedeemScriptType *ms,
                                   uint32_t input_index, const uint8_t *digest) {
@@ -174,21 +201,41 @@ bool phylax_relay_fill_signatures(const CoinInfo *coin,
   while (ms->signatures_count < count) {
     ms->signatures[ms->signatures_count++].size = 0;
   }
+  fill_problem[0] = '\0';
   for (int k = 0; k < target_count; k++) {
     uint8_t len = sig_len[k][input_index];
-    if (len == 0) continue;
+    // For the message if the input stays incomplete: which key block,
+    // and whether its signature never came, was unreadable or matched no key.
+    const char *outcome = NULL;
     uint8_t raw[64];
-    if (ecdsa_sig_from_der(sigs[k][input_index], len, raw) != 0) continue;
-    for (uint32_t i = 0; i < count; i++) {
-      if (ms->signatures[i].size != 0) continue;  // filled already
-      const HDNode *node = cryptoMultisigPubkey(coin, ms, i);
-      if (node == NULL) continue;
-      if (ecdsa_verify_digest(coin->curve->params, node->public_key, raw,
-                              digest) == 0) {
-        memcpy(ms->signatures[i].bytes, sigs[k][input_index], len);
-        ms->signatures[i].size = len;
-        break;
+    if (len == 0) {
+      outcome = "none";
+    } else if (ecdsa_sig_from_der(sigs[k][input_index], len, raw) != 0) {
+      outcome = "bad-der";
+    } else {
+      outcome = "no-match";
+      for (uint32_t i = 0; i < count; i++) {
+        if (ms->signatures[i].size != 0) continue;  // filled already
+        const HDNode *node = cryptoMultisigPubkey(coin, ms, i);
+        if (node == NULL) continue;
+        if (ecdsa_verify_digest(coin->curve->params, node->public_key, raw,
+                                digest) == 0) {
+          memcpy(ms->signatures[i].bytes, sigs[k][input_index], len);
+          ms->signatures[i].size = len;
+          outcome = NULL;  // placed
+          break;
+        }
       }
+    }
+    if (outcome != NULL) {
+      note_problem(" in");
+      note_number(input_index);
+      note_problem(" k");
+      note_hex(targets[k]);
+      note_problem(":");
+      note_number(len);
+      note_problem(" ");
+      note_problem(outcome);
     }
   }
   // Never return a transaction without every signature the script needs: a
