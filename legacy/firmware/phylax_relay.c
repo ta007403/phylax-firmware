@@ -198,6 +198,14 @@ bool phylax_relay_fill_signatures(const CoinInfo *coin,
   if (input_index >= PHYLAX_MAX_INPUTS) return false;
   uint32_t count = cryptoMultisigPubkeyCount(ms);
   if (count > sizeof(ms->signatures) / sizeof(ms->signatures[0])) return false;
+  // The keys in script order: signatures[i] belongs to the i-th key of the
+  // script, which is sorted when pubkeys_order is LEXICOGRAPHIC (sortedmulti).
+  // The main block's own slot is found the same way
+  // (cryptoMultisigPubkeyIndex); the order the host listed the keys in may
+  // differ, so never use that here.
+  // 15 keys at most, as cryptoMultisigPubkeys (MAX_MULTISIG_PUBKEY_COUNT).
+  static uint8_t script_pubkeys[33 * 15];
+  if (cryptoMultisigPubkeys(coin, ms, script_pubkeys) != count) return false;
   while (ms->signatures_count < count) {
     ms->signatures[ms->signatures_count++].size = 0;
   }
@@ -216,10 +224,8 @@ bool phylax_relay_fill_signatures(const CoinInfo *coin,
       outcome = "no-match";
       for (uint32_t i = 0; i < count; i++) {
         if (ms->signatures[i].size != 0) continue;  // filled already
-        const HDNode *node = cryptoMultisigPubkey(coin, ms, i);
-        if (node == NULL) continue;
-        if (ecdsa_verify_digest(coin->curve->params, node->public_key, raw,
-                                digest) == 0) {
+        if (ecdsa_verify_digest(coin->curve->params, &script_pubkeys[i * 33],
+                                raw, digest) == 0) {
           memcpy(ms->signatures[i].bytes, sigs[k][input_index], len);
           ms->signatures[i].size = len;
           outcome = NULL;  // placed
