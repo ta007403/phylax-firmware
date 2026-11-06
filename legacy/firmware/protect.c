@@ -278,6 +278,14 @@ bool protectChangePin(bool removal) {
       fsm_sendFailure(FailureType_Failure_PinInvalid, NULL);
       return false;
     }
+  } else if (!session_isUnlocked()) {
+    // PHYLAX: a board without a PIN locks too (auto-lock). Changing the PIN
+    // needs unlocked storage, so unlock it with the empty PIN first, as any
+    // other request does.
+    if (!config_unlock("")) {
+      fsm_sendFailure(FailureType_Failure_ProcessError, _("Unlock failed"));
+      return false;
+    }
   }
 
   if (!removal) {
@@ -307,8 +315,12 @@ bool protectChangePin(bool removal) {
   bool ret = config_changePin(new_pin);
   memzero(new_pin, sizeof(new_pin));
   if (ret == false) {
-    fsm_sendFailure(FailureType_Failure_ProcessError,
-                    _("The new PIN must be different from your wipe code."));
+    // PHYLAX: only blame the wipe code when there is one.
+    fsm_sendFailure(
+        FailureType_Failure_ProcessError,
+        config_hasWipeCode()
+            ? _("The new PIN must be different from your wipe code.")
+            : _("The PIN could not be changed."));
   }
   return ret;
 }

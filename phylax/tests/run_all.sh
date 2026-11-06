@@ -12,7 +12,7 @@ failed=0
 for t in spike2a spike2b test_timeout test_discovery test_3of3 test_wallets test_keyblocks test_setup test_rename \
   test_entropy:coin test_entropy:dice test_entropy:short \
   test_reset_entropy:coin test_reset_entropy:dice test_reset_entropy:skip test_reset_entropy:short \
-  test_reset_entropy:cancel test_reset_entropy:noscript test_receive test_screen test_unlock test_pin_screen test_pin_seed test_wake test_missing_sig test_sortedmulti test_rbf_recipients test_singlesig test_fw_signatures; do
+  test_reset_entropy:cancel test_reset_entropy:noscript test_receive test_screen test_unlock test_pin_screen test_pin_seed test_wake test_missing_sig test_sortedmulti test_rbf_recipients test_singlesig test_set_pin_locked test_fw_signatures; do
   printf '%-20s ' "$t"
   name=${t%%:*}
   mode=""

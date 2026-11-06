@@ -278,6 +278,7 @@ uv run --with embit python ../phylax/tests/test_missing_sig.py # never a half-si
 uv run --with embit python ../phylax/tests/test_sortedmulti.py # sign when the PC lists the keys unsorted (sortedmulti)
 uv run --with embit python ../phylax/tests/test_rbf_recipients.py # replaceable (RBF) send to two recipients with change
 uv run --with embit python ../phylax/tests/test_singlesig.py   # a single-sig spend is signed by the main block alone
+uv run --with embit python ../phylax/tests/test_set_pin_locked.py # set a PIN on a block without one after it auto-locked
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device
