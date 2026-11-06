@@ -34,10 +34,10 @@
 #include "phylax_bus.h"
 
 #define PHYLAX_WALLET_SLOTS 8
-#define PHYLAX_WALLET_MAX_KEYS 3  // 3-of-3 design limit
+#define PHYLAX_WALLET_MAX_KEYS 4  // main block + 3 key blocks: 4-of-4
 #define PHYLAX_WALLET_NAME_LEN 16
 #define PHYLAX_STORE_CHUNK 128     // max bytes per bus transfer / page write
-#define PHYLAX_WALLET_RECORD_SIZE 480  // 3-of-3 record = 477 bytes
+#define PHYLAX_WALLET_RECORD_SIZE 632  // 4-of-4 record = 627 bytes
 
 // Store status codes (STORE_DATA / STORE_ACK)
 #define PHYLAX_STORE_OK 0

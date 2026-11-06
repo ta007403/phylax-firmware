@@ -125,6 +125,18 @@ bool phylax_relay_is_multisig_spend(const TransactionType *tx) {
   return tx->inputs_count == 1 && tx->inputs[0].has_multisig;
 }
 
+int phylax_relay_key_block_count(void) {
+  int count = 0;
+  const PhylaxStackEntry *e;
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->hello.kind == PHYLAX_KIND_KEY &&
+        (e->hello.flags & PHYLAX_HELLO_INITIALIZED)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 bool phylax_relay_begin(const SignTx *msg) {
   phylax_relay_reset();
   const PhylaxStackEntry *e;

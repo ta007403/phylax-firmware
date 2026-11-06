@@ -33,8 +33,8 @@
 #include "coins.h"
 #include "messages-bitcoin.pb.h"
 
-// Design limit: main block + 2 key blocks = 3-of-3.
-#define PHYLAX_MAX_KEY_BLOCKS 2
+// Design limit: main block + 3 key blocks = 4-of-4.
+#define PHYLAX_MAX_KEY_BLOCKS 3
 #define PHYLAX_MAX_INPUTS 16
 #define PHYLAX_MAX_SIG 73
 
@@ -64,6 +64,9 @@ bool phylax_relay_probe_answered(void);
 // Whether the answer to the probe (input 0) is a multisig input: then the key
 // blocks sign first; otherwise the main block signs alone.
 bool phylax_relay_is_multisig_spend(const TransactionType *tx);
+
+// Key blocks with a seed in the stack, also beyond PHYLAX_MAX_KEY_BLOCKS.
+int phylax_relay_key_block_count(void);
 
 // Called with the host's SignTx once the probe found a multisig input. Starts
 // pass 1 with the first key block. Returns false if there is no key block

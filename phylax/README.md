@@ -68,7 +68,10 @@ ask for the current stack with `PhylaxGetBlocks` (message 7700, answer
 `PhylaxBlocks` 7701, see `common/protob/messages-phylax.proto`;
 `phylax/tests/phylax_msgs.py` registers them with trezorlib).
 
-Up to two key blocks take part (3-of-3 is the design limit). A key block
+Up to three key blocks take part (4-of-4 is the design limit: main block +
+3 key blocks). With a fourth key block attached the main block shows "Too
+many key blocks, use at most 3 at a time" and refuses multisig signing with
+"Too many key blocks (max 3)". A key block
 whose key is not in the wallet rejects the input before showing anything and
 is skipped, so a stranger block in the stack does not stop signing.
 
@@ -86,9 +89,11 @@ USB port and pins on one side, key blocks pins on both sides. The bus has
 
 A wallet is `wsh(sortedmulti(n, ...))`, n-of-n, one key per block with seed.
 A record holds its name, a generation counter, the fingerprints and the
-BIP48 account xpubs (`m/48'/0'/0'/2'` and `m/48'/1'/0'/2'`): 477 bytes at
-most, under public, writable Trezor storage keys (no secrets in it, no PIN
-needed). Records travel over the bus in chunks of at most 128 bytes.
+BIP48 account xpubs (`m/48'/0'/0'/2'` and `m/48'/1'/0'/2'`): 627 bytes at
+most (4-of-4), under public, writable Trezor storage keys (no secrets in it,
+no PIN needed). 8 slots: every combination of the main block and up to 3 key
+blocks (7 wallets) fits, about 3 KB. Every block must run firmware that knows
+4-of-4 records (older firmware refuses records of more than 3 keys). Records travel over the bus in chunks of at most 128 bytes.
 
 The main block reads the copy of every block that joins, merges it with its
 own (a wallet is identified by its set of fingerprints; the higher
@@ -96,7 +101,7 @@ generation wins) and writes the result back wherever a copy is missing or
 older. Then it compares the wallets with the seed fingerprints present:
 
 - the blocks match a saved wallet: "*2-of-2 #1* is ready."
-- a new combination of 2 or 3 blocks: "New 2-of-2 wallet?" with the
+- a new combination of 2 to 4 blocks: "New 2-of-2 wallet?" with the
   fingerprints; on **Create** (right button) it fetches the key blocks'
   xpubs over the bus and saves the wallet on every block; **No** is
   remembered until the blocks change
@@ -279,6 +284,7 @@ uv run --with embit python ../phylax/tests/test_sortedmulti.py # sign when the P
 uv run --with embit python ../phylax/tests/test_rbf_recipients.py # replaceable (RBF) send to two recipients with change
 uv run --with embit python ../phylax/tests/test_singlesig.py   # a single-sig spend is signed by the main block alone
 uv run --with embit python ../phylax/tests/test_set_pin_locked.py # set a PIN on a block without one after it auto-locked
+uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3 key blocks), and a 4th key block refused
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device

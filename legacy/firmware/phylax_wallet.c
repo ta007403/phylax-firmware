@@ -667,20 +667,24 @@ static void prompt_show(void) {
 
 static void prompt_draw(void) {
   static char title[24];
-  static char fp_lines[3][24];
+  // two fingerprints per line: up to 4 blocks (4-of-4) on one screen
+  static char fp_lines[2][24];
   strlcpy(title, "New ", sizeof(title));
   strlcat(title, candidate.name, sizeof(title));
   // drop the " #k" suffix from the title
   char *hash = strchr(title, '#');
   if (hash && hash > title) hash[-1] = '\0';
   strlcat(title, " wallet?", sizeof(title));
-  for (int i = 0; i < 3; i++) fp_lines[i][0] = '\0';
-  for (int i = 0; i < candidate.n && i < 3; i++) {
-    hex32(fp_lines[i], candidate.keys[i].fingerprint);
+  for (int i = 0; i < 2; i++) fp_lines[i][0] = '\0';
+  for (int i = 0; i < candidate.n && i < 4; i++) {
+    char fp[9];
+    hex32(fp, candidate.keys[i].fingerprint);
+    if (i % 2) strlcat(fp_lines[i / 2], " ", sizeof(fp_lines[0]));
+    strlcat(fp_lines[i / 2], fp, sizeof(fp_lines[0]));
   }
   shown[0] = '\0';
   layoutDialog(&bmp_icon_question, _("No"), _("Create"), NULL, title,
-               _("Blocks:"), fp_lines[0], fp_lines[1], fp_lines[2], NULL);
+               _("Blocks:"), fp_lines[0], fp_lines[1], NULL, NULL);
   layoutLast = prompt_redraw;
 }
 
@@ -827,7 +831,17 @@ static void check_stack(void) {
     return;
   }
 
-  // 2. A new combination of 2..3 blocks: offer to create a wallet, once the
+  // More key blocks than a wallet may have: no wallet, no signing.
+  int key_blocks = 0;
+  for (int i = 0; i < n; i++) {
+    if (addrs[i] != 0) key_blocks++;
+  }
+  if (key_blocks > PHYLAX_WALLET_MAX_KEYS - 1) {
+    show_status(_("Too many key blocks"), _("Use at most 3"), _("at a time."));
+    return;
+  }
+
+  // 2. A new combination of 2..4 blocks: offer to create a wallet, once the
   // stack has settled.
   static uint32_t seen_fps[PHYLAX_STACK_MAX + 1];
   static int seen_n = -1;
@@ -888,7 +902,6 @@ static void check_stack(void) {
   clear_status();
 }
 
-
 // ------------------------------------------------------------ poll
 
 void phylax_wallet_poll(void) {
@@ -900,8 +913,9 @@ void phylax_wallet_poll(void) {
   // Signing has priority: drop whatever we were doing with a key block.
   if (phylax_relay_state() != PHYLAX_RELAY_IDLE ||
       phylax_selected_block() != PHYLAX_ADDR_NONE) {
-    // The relay (or the PC, in select mode) has taken over the conversation with the key blocks (it set
-    // its own peer); just step aside. A late PublicKey is ignored by both.
+    // The relay (or the PC, in select mode) has taken over the conversation
+    // with the key blocks (it set its own peer); just step aside. A late
+    // PublicKey is ignored by both.
     if (wstate == W_FETCHING || wstate == W_PROMPT) wstate = W_IDLE;
     phylax_setup_abort();
     return;  // a copy being read or written just times out and is retried
@@ -933,8 +947,10 @@ void phylax_wallet_poll(void) {
           wstate = W_IDLE;
           return;
         }
-        if (wstate == W_LOADING) send_get();
-        else send_put();
+        if (wstate == W_LOADING)
+          send_get();
+        else
+          send_put();
       }
       return;
     case W_FETCHING:

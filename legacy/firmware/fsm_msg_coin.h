@@ -283,6 +283,12 @@ void fsm_msgTxAck(TxAck *msg) {
       return;
     }
     // Multisig coins. Pass 1: the key blocks sign first; this block relays.
+    if (phylax_relay_key_block_count() > PHYLAX_MAX_KEY_BLOCKS) {
+      fsm_sendFailure(FailureType_Failure_ProcessError,
+                      _("Too many key blocks (max 3)"));
+      layoutHome();
+      return;
+    }
     if (!phylax_relay_begin(&phylax_signtx)) {
       fsm_sendFailure(FailureType_Failure_ProcessError,
                       _("No key block attached"));
