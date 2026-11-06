@@ -256,15 +256,12 @@ void fsm_msgSignTx(const SignTx *msg) {
   if (!node) return;
 
   if (phylax_role() == PHYLAX_ROLE_MAIN && authorization == NULL) {
-    // Pass 1: the key blocks sign first; this block relays.
+    // Who signs depends on the coins: ask the host for the first input first
+    // (fsm_msgTxAck decides when it arrives).
     memcpy(&phylax_signtx, msg, sizeof(SignTx));
     phylax_coin = coin;
     phylax_unlock = unlock;
-    if (!phylax_relay_begin(msg)) {
-      fsm_sendFailure(FailureType_Failure_ProcessError,
-                      _("No key block attached"));
-      layoutHome();
-    }
+    phylax_relay_probe_start();
     return;
   }
 
@@ -277,6 +274,22 @@ void fsm_msgTxAck(TxAck *msg) {
   }
 
   CHECK_PARAM(msg->has_tx, _("No transaction provided"));
+
+  if (phylax_role() == PHYLAX_ROLE_MAIN && phylax_relay_probe_answered()) {
+    if (!phylax_relay_is_multisig_spend(&(msg->tx))) {
+      // Single-sig coins: the main block signs alone, as a Trezor One. The
+      // signing asks for input 0 again.
+      fsm_phylaxStartOwnSigning();
+      return;
+    }
+    // Multisig coins. Pass 1: the key blocks sign first; this block relays.
+    if (!phylax_relay_begin(&phylax_signtx)) {
+      fsm_sendFailure(FailureType_Failure_ProcessError,
+                      _("No key block attached"));
+      layoutHome();
+    }
+    return;
+  }
 
   if (phylax_role() == PHYLAX_ROLE_MAIN && phylax_relay_forward_txack()) {
     return;  // pass 1: this TxAck is for a key block

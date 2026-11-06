@@ -1,6 +1,11 @@
 /*
  * PHYLAX Blocks - main block: SignTx relay to the key blocks.
  *
+ * Probe:  the main block first asks the host for the transaction's first
+ *         input (a TxRequest like the one signing starts with). Only if it
+ *         is multisig are the key blocks asked (the passes below); a
+ *         single-sig spend is signed by the main block alone, as on a
+ *         Trezor One, with or without key blocks attached.
  * Pass 1: for each key block in the stack, one after the other, the host's
  *         SignTx and every TxAck are forwarded unchanged to that block; its
  *         TxRequests go back to the host with the "serialized" part removed
@@ -52,7 +57,15 @@ void phylax_relay_reset(void);
 // Bus address of the key block being relayed to (pass 1), else ADDR_NONE.
 uint8_t phylax_relay_target(void);
 
-// Called by fsm_msgSignTx on the main block with the host's SignTx. Starts
+// Called by fsm_msgSignTx on the main block: asks the host for input 0.
+void phylax_relay_probe_start(void);
+// Called by fsm_msgTxAck: true once, for the TxAck that answers the probe.
+bool phylax_relay_probe_answered(void);
+// Whether the answer to the probe (input 0) is a multisig input: then the key
+// blocks sign first; otherwise the main block signs alone.
+bool phylax_relay_is_multisig_spend(const TransactionType *tx);
+
+// Called with the host's SignTx once the probe found a multisig input. Starts
 // pass 1 with the first key block. Returns false if there is no key block
 // (then the caller reports the failure).
 bool phylax_relay_begin(const SignTx *msg);

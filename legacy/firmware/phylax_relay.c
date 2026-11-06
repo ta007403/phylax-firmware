@@ -37,6 +37,9 @@ static SignTx signtx;  // the host's SignTx, sent to every key block
 static uint8_t sigs[PHYLAX_MAX_KEY_BLOCKS][PHYLAX_MAX_INPUTS][PHYLAX_MAX_SIG];
 static uint8_t sig_len[PHYLAX_MAX_KEY_BLOCKS][PHYLAX_MAX_INPUTS];
 
+// A TxRequest for input 0 is out; its TxAck decides who signs.
+static bool probe_pending = false;
+
 static uint32_t key_last_seen_ms = 0;
 static uint32_t last_ping_ms = 0;
 
@@ -55,6 +58,7 @@ void phylax_relay_reset(void) {
     phylax_bus_set_trezor_peer(PHYLAX_ADDR_NONE, NULL);
   }
   state = PHYLAX_RELAY_IDLE;
+  probe_pending = false;
   target_count = 0;
   current = 0;
   memzero(sigs, sizeof(sigs));
@@ -96,6 +100,29 @@ static bool send_signtx(void) {
   show_waiting();
   return phylax_bus_send_trezor_msg(target(), MessageType_MessageType_SignTx,
                                     buf, stream.bytes_written);
+}
+
+void phylax_relay_probe_start(void) {
+  static TxRequest req;
+  phylax_relay_reset();
+  memzero(&req, sizeof(req));
+  req.has_request_type = true;
+  req.request_type = RequestType_TXINPUT;
+  req.has_details = true;
+  req.details.has_request_index = true;
+  req.details.request_index = 0;
+  probe_pending = true;
+  msg_write(MessageType_MessageType_TxRequest, &req);
+}
+
+bool phylax_relay_probe_answered(void) {
+  if (!probe_pending) return false;
+  probe_pending = false;
+  return true;
+}
+
+bool phylax_relay_is_multisig_spend(const TransactionType *tx) {
+  return tx->inputs_count == 1 && tx->inputs[0].has_multisig;
 }
 
 bool phylax_relay_begin(const SignTx *msg) {
