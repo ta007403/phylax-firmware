@@ -6,3 +6,6 @@ PhylaxWalletSummary.fingerprints        max_count:4
 PhylaxWallet.name                       max_size:17
 PhylaxWallet.keys                       max_count:4
 PhylaxSetWalletName.name                max_size:17
+PhylaxWallets.ignored                   max_count:8
+PhylaxIgnoredSet.fingerprints           max_count:4
+PhylaxForgetIgnored.fingerprints        max_count:4

@@ -115,6 +115,9 @@ bool config_getLabel(char *dest, uint16_t dest_size);
 // PHYLAX: the seed fingerprint, kept for when the block is locked.
 bool config_getPhylaxFingerprint(uint32_t *fingerprint);
 void config_setPhylaxFingerprint(uint32_t fingerprint);
+bool config_getPhylaxIgnored(uint8_t *dest, uint16_t dest_size,
+                             uint16_t *real_size);
+bool config_setPhylaxIgnored(const uint8_t *data, uint16_t size);
 void config_setLabel(const char *label);
 
 bool config_getLanguage(char *dest, uint16_t dest_size);

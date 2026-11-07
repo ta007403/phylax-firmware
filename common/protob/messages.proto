@@ -382,4 +382,5 @@ enum MessageType {
     MessageType_PhylaxSetWalletName = 7707 [(bitcoin_only) = true, (wire_in) = true];
     MessageType_PhylaxDeleteWallet = 7708 [(bitcoin_only) = true, (wire_in) = true];
     MessageType_PhylaxUnlockBlock = 7709 [(bitcoin_only) = true, (wire_in) = true];
+    MessageType_PhylaxForgetIgnored = 7710 [(bitcoin_only) = true, (wire_in) = true];
 }

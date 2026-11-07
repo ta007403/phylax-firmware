@@ -10,6 +10,7 @@
 
 #include "phylax_wallet.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "bip32.h"
@@ -97,6 +98,9 @@ static uint32_t fetch_ms;
 // (sorted); asked again once the blocks change.
 static uint32_t declined[PHYLAX_WALLET_MAX_KEYS];
 static uint8_t declined_n = 0;
+
+// "Ask again later?" is on screen (after "No" on "New ... wallet?").
+static bool prompt_asking_again = false;
 
 // Earliest time to try creating a wallet again after a failure.
 static uint32_t retry_after_ms = 0;
@@ -654,6 +658,113 @@ static void clear_status(void) {
   }
 }
 
+// ------------------------------------------------------------ "Never"
+
+// Stored as n (1 byte) and PHYLAX_WALLET_MAX_KEYS fingerprints (4 bytes
+// each, little endian, unused ones 0) per combination, oldest first.
+#define IGNORED_ENTRY_SIZE (1 + 4 * PHYLAX_WALLET_MAX_KEYS)
+
+int phylax_wallet_get_ignored(PhylaxIgnoredRec out[PHYLAX_IGNORED_MAX]) {
+  uint8_t buf[PHYLAX_IGNORED_MAX * IGNORED_ENTRY_SIZE];
+  uint16_t len = 0;
+  if (!config_getPhylaxIgnored(buf, sizeof(buf), &len)) return 0;
+  int count = 0;
+  for (uint16_t at = 0; at + IGNORED_ENTRY_SIZE <= len;
+       at += IGNORED_ENTRY_SIZE) {
+    PhylaxIgnoredRec *rec = &out[count];
+    rec->n = buf[at];
+    if (rec->n < 2 || rec->n > PHYLAX_WALLET_MAX_KEYS) continue;
+    for (int k = 0; k < PHYLAX_WALLET_MAX_KEYS; k++) {
+      const uint8_t *p = &buf[at + 1 + 4 * k];
+      rec->fingerprints[k] = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    }
+    if (++count == PHYLAX_IGNORED_MAX) break;
+  }
+  return count;
+}
+
+static void ignored_put(const PhylaxIgnoredRec *recs, int count) {
+  uint8_t buf[PHYLAX_IGNORED_MAX * IGNORED_ENTRY_SIZE];
+  memzero(buf, sizeof(buf));
+  for (int i = 0; i < count; i++) {
+    uint8_t *at = &buf[i * IGNORED_ENTRY_SIZE];
+    at[0] = recs[i].n;
+    for (int k = 0; k < recs[i].n; k++) {
+      uint32_t fp = recs[i].fingerprints[k];
+      for (int b = 0; b < 4; b++) at[1 + 4 * k + b] = (uint8_t)(fp >> (8 * b));
+    }
+  }
+  config_setPhylaxIgnored(buf, (uint16_t)(count * IGNORED_ENTRY_SIZE));
+}
+
+static bool ignored_matches(const PhylaxIgnoredRec *rec, const uint32_t *fps,
+                            int n) {
+  if (rec->n != n) return false;
+  for (int k = 0; k < n; k++) {
+    if (rec->fingerprints[k] != fps[k]) return false;
+  }
+  return true;
+}
+
+static bool is_ignored(const uint32_t *fps, int n) {
+  PhylaxIgnoredRec recs[PHYLAX_IGNORED_MAX];
+  int count = phylax_wallet_get_ignored(recs);
+  for (int i = 0; i < count; i++) {
+    if (ignored_matches(&recs[i], fps, n)) return true;
+  }
+  return false;
+}
+
+// `fps` sorted.
+static void ignore_forever(const uint32_t *fps, int n) {
+  if (n < 2 || n > PHYLAX_WALLET_MAX_KEYS) return;
+  PhylaxIgnoredRec recs[PHYLAX_IGNORED_MAX + 1];
+  int count = phylax_wallet_get_ignored(recs);
+  for (int i = 0; i < count; i++) {
+    if (ignored_matches(&recs[i], fps, n)) return;
+  }
+  PhylaxIgnoredRec *rec = &recs[count++];
+  memzero(rec, sizeof(*rec));
+  rec->n = (uint8_t)n;
+  memcpy(rec->fingerprints, fps, sizeof(fps[0]) * (size_t)n);
+  // full: the oldest goes
+  if (count > PHYLAX_IGNORED_MAX) {
+    ignored_put(&recs[1], PHYLAX_IGNORED_MAX);
+  } else {
+    ignored_put(recs, count);
+  }
+}
+
+bool phylax_wallet_forget_ignored(const uint32_t *fingerprints, int n) {
+  if (n < 2 || n > PHYLAX_WALLET_MAX_KEYS) return false;
+  uint32_t fps[PHYLAX_WALLET_MAX_KEYS];
+  memcpy(fps, fingerprints, sizeof(fps[0]) * (size_t)n);
+  // sorted, as kept
+  for (int i = 1; i < n; i++) {
+    for (int j = i; j > 0 && fps[j - 1] > fps[j]; j--) {
+      uint32_t t = fps[j];
+      fps[j] = fps[j - 1];
+      fps[j - 1] = t;
+    }
+  }
+  PhylaxIgnoredRec recs[PHYLAX_IGNORED_MAX];
+  int count = phylax_wallet_get_ignored(recs);
+  int keep = 0;
+  for (int i = 0; i < count; i++) {
+    if (!ignored_matches(&recs[i], fps, n)) recs[keep++] = recs[i];
+  }
+  if (keep == count) return false;
+  ignored_put(recs, keep);
+  // Also this session's "no" for it: offered as soon as the blocks are there.
+  bool same = declined_n == n;
+  for (int i = 0; same && i < n; i++) {
+    if (declined[i] != fps[i]) same = false;
+  }
+  if (same) declined_n = 0;
+  return true;
+}
+
 // "New ... wallet?" takes only a press made while it is on screen; its
 // screen is marked with prompt_redraw in layoutLast.
 static PhylaxPressGuard prompt_guard;
@@ -662,10 +773,19 @@ static void prompt_redraw(void) { prompt_draw(); }
 
 static void prompt_show(void) {
   phylax_press_guard_reset(&prompt_guard);
+  prompt_asking_again = false;
   prompt_draw();
 }
 
 static void prompt_draw(void) {
+  if (prompt_asking_again) {
+    shown[0] = '\0';
+    layoutDialog(&bmp_icon_question, _("Never"), _("Later"), NULL,
+                 _("Ask again later?"), NULL, _("Never: not offered"),
+                 _("until you allow it"), _("in PHYLAX Suite."), NULL);
+    layoutLast = prompt_redraw;
+    return;
+  }
   static char title[24];
   // two fingerprints per line: up to 4 blocks (4-of-4) on one screen
   static char fp_lines[2][24];
@@ -713,11 +833,21 @@ static int slot_of(uint32_t id) {
 }
 
 static void prompt_answer(bool yes) {
-  if (!yes) {
+  // "No": then "Ask again later?" (yes = "Later", no = "Never").
+  if (!yes && !prompt_asking_again) {
+    prompt_asking_again = true;
+    phylax_press_guard_reset(&prompt_guard);
+    prompt_draw();
+    return;
+  }
+  if (prompt_asking_again) {
+    // Not again while these blocks stay together.
     declined_n = candidate.n;
     for (int i = 0; i < candidate.n; i++) {
       declined[i] = candidate.keys[i].fingerprint;
     }
+    if (!yes) ignore_forever(declined, declined_n);
+    prompt_asking_again = false;
     wstate = W_IDLE;
     shown[0] = '\0';
     return;
@@ -751,7 +881,14 @@ void phylax_wallet_ui_poll(void) {
   if (wstate != W_PROMPT) return;
 #if EMULATOR
   if (phylax_emu_autoconfirm()) {  // tests: nobody presses the buttons
-    prompt_answer(true);
+    // PHYLAX_EMU_NEW_WALLET=never|later: "No", then that answer.
+    const char *answer = getenv("PHYLAX_EMU_NEW_WALLET");
+    if (answer == NULL) {
+      prompt_answer(true);
+    } else {
+      prompt_answer(false);
+      prompt_answer(strcmp(answer, "later") == 0);
+    }
     return;
   }
 #endif
@@ -866,9 +1003,16 @@ static void check_stack(void) {
   bool may_try = !retry_pause || (int32_t)(timer_ms() - retry_after_ms) >= 0;
   if (n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
       free_slot() >= 0 && may_try && settled) {
-    retry_pause = false;
-    start_new_wallet(fps, addrs, n);
-    return;
+    if (is_ignored(fps, n)) {
+      // "Never": kept like a "no" for as long as these blocks stay together
+      // (the flash is read once per combination).
+      declined_n = (uint8_t)n;
+      memcpy(declined, fps, sizeof(fps[0]) * (size_t)n);
+    } else {
+      retry_pause = false;
+      start_new_wallet(fps, addrs, n);
+      return;
+    }
   }
 
   // 3. A saved wallet missing exactly one block: say which one to attach.
@@ -1048,8 +1192,9 @@ void phylax_wallet_delete(int slot) {
   PhylaxWalletRec *w = &wallets[slot];
   w->deleted = true;
   w->generation++;
-  // Not offered again at once while its blocks are still attached.
+  // Not offered again (until the PC forgets it).
   declined_n = w->n;
   for (int i = 0; i < w->n; i++) declined[i] = w->keys[i].fingerprint;
+  ignore_forever(declined, declined_n);
   drop_prompt();
 }

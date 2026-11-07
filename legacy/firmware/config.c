@@ -83,6 +83,8 @@ static const uint32_t META_MAGIC_V10 = 0xFFFFFFFF;
 // PHYLAX: seed fingerprint, readable while locked (it is in every descriptor
 // of the block anyway), so a locked block can still say who it is.
 #define KEY_PHYLAX_FINGERPRINT (18 | APP | FLAG_PUBLIC_SHIFTED)    // uint32
+// PHYLAX Blocks: block combinations not to offer as a wallet ("Never")
+#define KEY_PHYLAX_IGNORED (19 | APP | FLAG_PUBLIC_SHIFTED)        // bytes(136)
 #define KEY_DEBUG_LINK_PIN (255 | APP | FLAG_PUBLIC_SHIFTED)       // string(10)
 // clang-format on
 
@@ -746,6 +748,17 @@ void config_setPhylaxFingerprint(uint32_t fingerprint) {
   uint32_t stored = 0;
   if (config_getPhylaxFingerprint(&stored) && stored == fingerprint) return;
   storage_set(KEY_PHYLAX_FINGERPRINT, &fingerprint, sizeof(fingerprint));
+}
+
+bool config_getPhylaxIgnored(uint8_t *dest, uint16_t dest_size,
+                             uint16_t *real_size) {
+  return sectrue ==
+         config_get_bytes(KEY_PHYLAX_IGNORED, dest, dest_size, real_size);
+}
+
+bool config_setPhylaxIgnored(const uint8_t *data, uint16_t size) {
+  if (size == 0) return sectrue == storage_delete(KEY_PHYLAX_IGNORED);
+  return sectrue == storage_set(KEY_PHYLAX_IGNORED, data, size);
 }
 
 bool config_getLabel(char *dest, uint16_t dest_size) {

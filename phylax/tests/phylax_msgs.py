@@ -117,17 +117,30 @@ class PhylaxGetWallets(protobuf.MessageType):
     MESSAGE_WIRE_TYPE = 7702
 
 
+class PhylaxIgnoredSet(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = None
+    FIELDS = {
+        1: protobuf.Field("fingerprints", "uint32", repeated=True, required=False, default=None),
+    }
+
+    def __init__(self, *, fingerprints: Optional[Sequence[int]] = None) -> None:
+        self.fingerprints: Sequence[int] = fingerprints if fingerprints is not None else []
+
+
 class PhylaxWallets(protobuf.MessageType):
     MESSAGE_WIRE_TYPE = 7703
     FIELDS = {
         1: protobuf.Field("wallets", "PhylaxWalletSummary", repeated=True, required=False, default=None),
         2: protobuf.Field("storage_present", "bool", repeated=False, required=True),
+        3: protobuf.Field("ignored", "PhylaxIgnoredSet", repeated=True, required=False, default=None),
     }
 
     def __init__(self, *, storage_present: bool,
-                 wallets: Optional[Sequence[PhylaxWalletSummary]] = None) -> None:
+                 wallets: Optional[Sequence[PhylaxWalletSummary]] = None,
+                 ignored: Optional[Sequence[PhylaxIgnoredSet]] = None) -> None:
         self.wallets: Sequence[PhylaxWalletSummary] = wallets if wallets is not None else []
         self.storage_present = storage_present
+        self.ignored: Sequence[PhylaxIgnoredSet] = ignored if ignored is not None else []
 
 
 class PhylaxWalletKey(protobuf.MessageType):
@@ -229,3 +242,19 @@ class PhylaxUnlockBlock(protobuf.MessageType):
 
 
 mapping.DEFAULT_MAPPING.register(PhylaxUnlockBlock)
+
+
+# --- "Never": forget a block combination the main block does not offer ---
+
+
+class PhylaxForgetIgnored(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 7710
+    FIELDS = {
+        1: protobuf.Field("fingerprints", "uint32", repeated=True, required=False, default=None),
+    }
+
+    def __init__(self, *, fingerprints: Optional[Sequence[int]] = None) -> None:
+        self.fingerprints: Sequence[int] = fingerprints if fingerprints is not None else []
+
+
+mapping.DEFAULT_MAPPING.register(PhylaxForgetIgnored)

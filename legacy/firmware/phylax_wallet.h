@@ -105,7 +105,23 @@ const char *phylax_wallet_check_delete(int slot);
 // Apply (after the user confirmed): raises the generation, the sync writes
 // it to every block.
 void phylax_wallet_rename(int slot, const char *name);
+// Also remembered as "Never" for its blocks (see below).
 void phylax_wallet_delete(int slot);
+
+// --- "Never": combinations not offered as a wallet ---
+// After "No" on "New ... wallet?" the main block asks "Ask again later?":
+// "Never" keeps the combination in its own flash (config storage, until it is
+// wiped), and a wallet deleted from the PC is kept the same way. At most
+// PHYLAX_IGNORED_MAX, the oldest is dropped. The PC lists them (in
+// PhylaxWallets) and may forget one, so it is offered again.
+#define PHYLAX_IGNORED_MAX 8
+typedef struct {
+  uint8_t n;
+  uint32_t fingerprints[PHYLAX_WALLET_MAX_KEYS];  // sorted
+} PhylaxIgnoredRec;
+int phylax_wallet_get_ignored(PhylaxIgnoredRec out[PHYLAX_IGNORED_MAX]);
+// False if this combination was not kept.
+bool phylax_wallet_forget_ignored(const uint32_t *fingerprints, int n);
 
 // --- every other block: let the main block read and write its copy ---
 void phylax_storage_on_request(const PhylaxFrame *f);

@@ -92,6 +92,15 @@ void fsm_msgPhylaxGetWallets(const PhylaxGetWallets *msg) {
       info->fingerprints[info->fingerprints_count++] = w->keys[k].fingerprint;
     }
   }
+  static PhylaxIgnoredRec ignored[PHYLAX_IGNORED_MAX];
+  int ignored_n = phylax_wallet_get_ignored(ignored);
+  const size_t max_ignored = sizeof(resp->ignored) / sizeof(resp->ignored[0]);
+  for (int i = 0; i < ignored_n && resp->ignored_count < max_ignored; i++) {
+    PhylaxIgnoredSet *set = &resp->ignored[resp->ignored_count++];
+    for (int k = 0; k < ignored[i].n; k++) {
+      set->fingerprints[set->fingerprints_count++] = ignored[i].fingerprints[k];
+    }
+  }
   msg_write(MessageType_MessageType_PhylaxWallets, resp);
 }
 
@@ -238,4 +247,21 @@ void fsm_msgPhylaxUnlockBlock(const PhylaxUnlockBlock *msg) {
   }
   fsm_sendSuccess(_("Enter the PIN on the key block"));
   layoutHome();  // the main block shows "Unlocking key block ..."
+}
+
+void fsm_msgPhylaxForgetIgnored(const PhylaxForgetIgnored *msg) {
+  if (phylax_role() != PHYLAX_ROLE_MAIN) {
+    fsm_sendFailure(FailureType_Failure_UnexpectedMessage,
+                    _("Not a PHYLAX main block"));
+    return;
+  }
+  CHECK_PIN
+  // Harmless (the wallet is only offered again): no confirmation.
+  if (!phylax_wallet_forget_ignored(msg->fingerprints,
+                                    (int)msg->fingerprints_count)) {
+    fsm_sendFailure(FailureType_Failure_DataError,
+                    _("Those blocks are not on the Never list"));
+    return;
+  }
+  fsm_sendSuccess(_("Those blocks are offered again"));
 }

@@ -103,8 +103,9 @@ older. Then it compares the wallets with the seed fingerprints present:
 - the blocks match a saved wallet: "*2-of-2 #1* is ready."
 - a new combination of 2 to 4 blocks: "New 2-of-2 wallet?" with the
   fingerprints; on **Create** (right button) it fetches the key blocks'
-  xpubs over the bus and saves the wallet on every block; **No** is
-  remembered until the blocks change
+  xpubs over the bus and saves the wallet on every block; **No** then asks
+  "Ask again later?": **Later** is remembered until the blocks change,
+  **Never** in the main block's own flash (see below)
 - a saved wallet is missing one block: "Attach key block 777dfe5d to use
   wallet *3-of-3 #1*"
 
@@ -113,7 +114,20 @@ wallet with its xpubs with `PhylaxGetWallet` (enough to build the
 descriptor).
 
 In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
-"Create" automatically (tests only).
+"Create" automatically (tests only); with `PHYLAX_EMU_NEW_WALLET=never` or
+`later` it answers "No" and then that.
+
+### "Never"
+
+A combination answered **Never**, or whose wallet the PC deleted, is kept in
+the main block's config storage (`KEY_PHYLAX_IGNORED`, until the main block
+is wiped; at most 8, the oldest is dropped) and is not offered again, also
+after a restart or when the blocks are swapped and put back. Other
+combinations of the same blocks are still offered. `PhylaxWallets.ignored`
+lists them for the PC, and `PhylaxForgetIgnored(fingerprints)` (7710, no
+confirmation) forgets one: the main block offers it again as soon as those
+blocks are all attached. PHYLAX Suite: "Never" card on the PHYLAX Snap page,
+"Ask again". Firmware without the list reports none.
 
 ## Renaming and deleting wallets from the PC
 
@@ -132,9 +146,9 @@ In the emulator, `PHYLAX_EMU_AUTOCONFIRM=1` on the main block answers
 Both raise the wallet's generation, so the change reaches every block's copy,
 including blocks attached later with an older copy. A deleted wallet stays
 as a hidden record (same identity, deleted flag) so such a block cannot
-bring it back. The main block does not offer the same blocks as a new wallet
-right after a delete; it does once the blocks change (one removed and put
-back), and the wallet returns in its old slot. Refused while a key block is
+bring it back. A deleted wallet's blocks go on the main block's "Never" list
+(above); after "Ask again" the main block offers them again and the wallet
+returns in its old slot. Refused while a key block is
 being set up or a transaction is being signed.
 
 ## Setting up a key block with no PC
@@ -285,6 +299,7 @@ uv run --with embit python ../phylax/tests/test_rbf_recipients.py # replaceable 
 uv run --with embit python ../phylax/tests/test_singlesig.py   # a single-sig spend is signed by the main block alone
 uv run --with embit python ../phylax/tests/test_set_pin_locked.py # set a PIN on a block without one after it auto-locked
 uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3 key blocks), and a 4th key block refused
+uv run --with embit python ../phylax/tests/test_never.py      # "Never" kept across restarts, forgotten from the PC, delete = Never
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device

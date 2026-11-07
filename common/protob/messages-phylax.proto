@@ -91,6 +91,17 @@ message PhylaxGetWallets {
 message PhylaxWallets {
     repeated PhylaxWalletSummary wallets = 1;
     required bool storage_present = 2;          // every block's copy has been read
+    repeated PhylaxIgnoredSet ignored = 3;      // combinations the main block does not offer
+}
+
+/**
+ * A combination of blocks the user answered "Never" to on "New ... wallet?",
+ * or whose wallet the PC deleted: the main block does not offer it as a
+ * wallet until the PC forgets it (PhylaxForgetIgnored). Kept in the main
+ * block only, until it is wiped; at most 8, the oldest is dropped.
+ */
+message PhylaxIgnoredSet {
+    repeated uint32 fingerprints = 1;           // sorted
 }
 
 /**
@@ -168,4 +179,15 @@ message PhylaxDeleteWallet {
  */
 message PhylaxUnlockBlock {
     required uint32 address = 1;    // bus address of a locked key block, from PhylaxBlocks
+}
+
+/**
+ * Request: Forget a "Never" for this combination of blocks: the main block
+ * offers it as a wallet again the next time they are all attached.
+ * @start
+ * @next Success
+ * @next Failure
+ */
+message PhylaxForgetIgnored {
+    repeated uint32 fingerprints = 1;           // as in PhylaxIgnoredSet
 }
