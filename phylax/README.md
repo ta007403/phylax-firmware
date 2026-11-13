@@ -250,6 +250,16 @@ PIN-protected request (GetPublicKey m/0', result discarded) with
 the PC; Cancel on the main block stops it. "Later" is not asked again until
 that block is unplugged or locks again after an unlock.
 
+While the main block asks "Unlock it?" (or "New key block found. Set it
+up?"), the key block it means shows **"Main block asks: Unlock this block?"**
+with its own fingerprint (or "Set up this block?"), "Answer on the main
+block.", so it can be found in the stack. The main block sends
+`ATTENTION(kind)` (0x31: 0 off, 1 unlock, 2 setup) every 2 s while its prompt
+is up and `ATTENTION(0)` when it goes; without a repeat for 6 s (main block
+unplugged) the key block shows its home screen again. Only the home screen
+(or the screensaver) is replaced: the PIN entry of an unlock, or a PC
+request, stays. Older key firmware ignores the message (`phylax_attention.c`).
+
 ### Screens
 
 On a main block the home screen is the PHYLAX prompt, setup step or status,
@@ -303,6 +313,7 @@ uv run --with embit python ../phylax/tests/test_set_pin_locked.py # set a PIN on
 uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3 key blocks), and a 4th key block refused
 uv run --with embit python ../phylax/tests/test_never.py      # "Never" kept across restarts, forgotten from the PC, delete = Never
 uv run --with embit python ../phylax/tests/test_locked_offer.py # no new wallet offered while a key block is locked
+uv run --with embit python ../phylax/tests/test_attention.py  # the key block asked about shows "Unlock this block?" (--shots DIR: PNGs)
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device

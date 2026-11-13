@@ -20,6 +20,7 @@
 #include "oled.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
+#include "phylax_attention.h"
 #include "phylax_bus.h"
 #include "phylax_pin.h"
 #include "phylax_stack.h"
@@ -508,6 +509,7 @@ void phylax_setup_abort(void) {
   phylax_userent_forget();
   if (state != S_IDLE) state = S_IDLE;
   release_screen();
+  phylax_attention_target(PHYLAX_ADDR_NONE, PHYLAX_ATTENTION_OFF);
 }
 
 static void answer(bool yes) {
@@ -599,7 +601,31 @@ bool phylax_setup_draw_home(void) {
   return true;
 }
 
+// The key block asked about (while "Unlock it?" / "Set it up?" is on screen)
+// shows "Main block asks: ... this block?" (phylax_attention.h).
+static void update_attention(void) {
+  uint8_t addr = PHYLAX_ADDR_NONE;
+  PhylaxAttention kind = PHYLAX_ATTENTION_OFF;
+  if (state == S_PROMPT) {
+    const PhylaxStackEntry *e = find_uid(target_uid);
+    if (e != NULL) {
+      addr = e->addr;
+      kind =
+          job == JOB_UNLOCK ? PHYLAX_ATTENTION_UNLOCK : PHYLAX_ATTENTION_SETUP;
+    }
+  }
+  phylax_attention_target(addr, kind);
+}
+
+static bool setup_poll_step(void);
+
 bool phylax_setup_poll(void) {
+  bool busy = setup_poll_step();
+  update_attention();
+  return busy;
+}
+
+static bool setup_poll_step(void) {
   prune_declined();
   prune_later();
   switch (state) {

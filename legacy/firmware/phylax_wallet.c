@@ -24,6 +24,7 @@
 #include "messages.pb.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
+#include "phylax_attention.h"
 #include "phylax_pin.h"
 #include "phylax_relay.h"
 #include "phylax_setup.h"
@@ -916,6 +917,8 @@ void phylax_wallet_ui_poll(void) {
 }
 
 bool phylax_wallet_draw_home(void) {
+  // a key block: "Main block asks: unlock this block?" (phylax_attention.h)
+  if (phylax_role() == PHYLAX_ROLE_KEY) return phylax_attention_draw_home();
   if (phylax_role() != PHYLAX_ROLE_MAIN) return false;
   if (phylax_setup_draw_home()) return true;
   if (wstate == W_PROMPT) {

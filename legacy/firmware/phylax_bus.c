@@ -8,6 +8,7 @@
  */
 
 #include "phylax_bus.h"
+#include "phylax_attention.h"
 #include "phylax_pin.h"
 
 #include <string.h>
@@ -492,6 +493,11 @@ static void block_on_frame(const PhylaxFrame *f) {
         phylax_set_local_ui(f->payload[0] != 0);
       }
       break;
+    case PHYLAX_MSG_ATTENTION:
+      if (my_addr != PHYLAX_ADDR_NONE) {
+        phylax_attention_on_frame(f->payload, f->len);
+      }
+      break;
     case PHYLAX_MSG_TREZOR:
       if (f->len != USB_PACKET_SIZE || my_addr == PHYLAX_ADDR_NONE) {
         break;
@@ -559,6 +565,7 @@ void phylax_poll(void) {
         hello_pending = false;
         key_send_hello();
       }
+      phylax_attention_poll();
       break;
     default:
       break;
