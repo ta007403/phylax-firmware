@@ -55,6 +55,10 @@ void phylax_attention_poll(void) {
   }
 }
 
+bool phylax_attention_active(void) {
+  return shown_kind != PHYLAX_ATTENTION_OFF;
+}
+
 bool phylax_attention_draw_home(void) {
   if (shown_kind == PHYLAX_ATTENTION_OFF) return false;
   if (shown_kind == PHYLAX_ATTENTION_UNLOCK) {

@@ -261,8 +261,11 @@ unplugged) the key block shows its home screen again. Only the home screen
 request, stays. On Unlock / Set up the main block sends `ATTENTION(0)` before
 it starts, and the key block never redraws during the main block's
 conversation (`LOCAL_UI`): its PIN entry does not count as a screen of its
-own, so the home screen used to be drawn over it. Older key firmware ignores
-the message (`phylax_attention.c`).
+own, so the home screen used to be drawn over it. While the request is shown
+the key block does not go to sleep (auto-lock screensaver): asleep for longer
+than its auto-lock delay, it used to fall asleep again at once after each
+repeat (a blinking screen). Older key firmware ignores the message
+(`phylax_attention.c`).
 
 ### Screens
 

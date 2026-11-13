@@ -17,7 +17,9 @@ key block shows "Main block asks: Unlock this block?" with its fingerprint.
      its home screen again by itself within 6 s.
   5. A locked (asleep) again, the main block presses Unlock itself (as on
      hardware): A shows its PIN entry, not the logo, until it is unlocked.
-  6. A blank key block C alone with the main block, which asks "Set it up?":
+  6. A asleep for long (auto-lock 10 s) and asked again: the request stays on
+     screen, it does not blink (asleep, woken by the next repeat, asleep...).
+  7. A blank key block C alone with the main block, which asks "Set it up?":
      C shows "Main block asks: Set up this block?".
 
 The key block screens are saved as PNG files (--shots DIR).
@@ -44,7 +46,7 @@ import spike2b as s  # noqa: E402
 from test_setup import GOOD  # noqa: E402  (PIN 1357 on the carousel)
 from test_unlock import KEY_FP, KEY_PIN, wait_key  # noqa: E402
 from test_wallets import PORT_B, SEED_B, check, wait_wallets  # noqa: E402
-from trezorlib import messages  # noqa: E402
+from trezorlib import device, messages  # noqa: E402
 from trezorlib.debuglink import load_device  # noqa: E402
 
 WIDTH, HEIGHT = 128, 64
@@ -203,7 +205,32 @@ def main():
         check(True, f"A unlocked ({time.time() - started:.0f} s)", "")
         main_blk.stop()
 
-        print("6. A blank key block C: the main block asks to set it up")
+        print("6. A asleep for long (auto-lock 10 s), asked again: the request stays, no blinking")
+        # Found on hardware: the request woke the sleeping block, its auto-lock (home screen
+        # shown for longer than the delay) put it back to sleep at once, the next repeat woke
+        # it again: the screen blinked.
+        device.apply_settings(key_a.ctx.get_session(passphrase=None), auto_lock_delay_ms=10_000)
+        key_a.ctx.get_session(passphrase=None).call(messages.LockDevice(), expect=messages.Success)
+        time.sleep(15)  # well past the auto-lock delay
+        main_blk = start_main(autoconfirm=False)
+        deadline = time.time() + 30
+        while not any(b.fingerprint == KEY_FP and b.locked for b in s.get_blocks(main_blk.session)):
+            if time.time() > deadline:
+                raise TimeoutError("A, locked, in the stack")
+            time.sleep(0.5)
+        time.sleep(8)  # the main block asks about A
+        samples = []
+        for _ in range(40):  # 10 s, 4 per second
+            samples.append(screen(key_a))
+            time.sleep(0.25)
+        others = sum(1 for shot in samples if shot != asked)
+        if shots and others:
+            save_png(next(shot for shot in samples if shot != asked), shots / "key-a-blink.png")
+        check(others == 0, "A shows the request all the time (40 samples in 10 s)",
+              f"A's screen changed in {others} of 40 samples (blinking)")
+        main_blk.stop()
+
+        print("7. A blank key block C: the main block asks to set it up")
         # C alone with the main block: a locked A would be asked about first
         key_b.stop()
         key_a.stop()

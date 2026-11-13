@@ -32,6 +32,10 @@ void phylax_attention_on_frame(const uint8_t *payload, uint16_t len);
 void phylax_attention_poll(void);
 // Key block: the home screen. True if the request was drawn instead.
 bool phylax_attention_draw_home(void);
+// Key block: the main block's request is shown. The block does not go to
+// sleep (auto-lock screensaver) meanwhile: asleep, it would be woken by the
+// next repeat and fall asleep again at once (a blinking screen).
+bool phylax_attention_active(void);
 
 // Main block: keep `kind` on the key block at `addr` (PHYLAX_ADDR_NONE or
 // PHYLAX_ATTENTION_OFF: none). Call often; it sends only on a change and

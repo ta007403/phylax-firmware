@@ -29,6 +29,7 @@
 #include "layout2.h"
 #include "memzero.h"
 #include "oled.h"
+#include "phylax_attention.h"
 #include "phylax_wallet.h"
 #include "rng.h"
 #include "setup.h"
@@ -111,8 +112,9 @@ void check_lock_screen(void) {
     }
   }
 
-  // if homescreen is shown for too long
-  if (layoutLast == layoutHomescreen) {
+  // if homescreen is shown for too long (PHYLAX: not while a key block shows
+  // the main block's "Unlock this block?", phylax_attention.h)
+  if (layoutLast == layoutHomescreen && !phylax_attention_active()) {
     if ((timer_ms() - system_millis_lock_start) >=
         config_getAutoLockDelayMs()) {
       // lock the screen
