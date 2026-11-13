@@ -8,6 +8,7 @@
 #include "gettext.h"
 #include "layout2.h"
 #include "phylax_bus.h"
+#include "phylax_pin.h"
 #include "timer.h"
 
 // ------------------------------------------------------------ key block
@@ -23,9 +24,11 @@ static bool home_on_screen(void) {
 static void set_kind(PhylaxAttention kind) {
   if (kind == shown_kind) return;
   shown_kind = kind;
-  // Anything else on screen (the PIN entry the unlock starts, a PC request)
-  // stays; the home screen shows the change.
-  if (home_on_screen()) layoutHomescreen();
+  // Anything else on screen (a PC request) stays; the home screen shows the
+  // change. The PIN entry of an unlock does not set layoutLast: never redraw
+  // while the main block's conversation (its PIN, its setup) is running
+  // (found on hardware: the logo over the PIN entry until a button press).
+  if (home_on_screen() && !phylax_local_ui()) layoutHomescreen();
 }
 
 void phylax_attention_on_frame(const uint8_t *payload, uint16_t len) {
@@ -35,6 +38,13 @@ void phylax_attention_on_frame(const uint8_t *payload, uint16_t len) {
     kind = PHYLAX_ATTENTION_OFF;
   }
   expires_ms = timer_ms() + PHYLAX_ATTENTION_TTL_MS;
+  // The block went to sleep (screensaver) while the request was shown: a
+  // repeat shows it again.
+  if (kind == shown_kind && kind != PHYLAX_ATTENTION_OFF &&
+      layoutLast == layoutScreensaver && !phylax_local_ui()) {
+    layoutHomescreen();
+    return;
+  }
   set_kind(kind);
 }
 

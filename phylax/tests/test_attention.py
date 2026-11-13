@@ -15,7 +15,9 @@ key block shows "Main block asks: Unlock this block?" with its fingerprint.
      its screen is its home screen again.
   4. A is locked again and the main block is stopped while it asks: A shows
      its home screen again by itself within 6 s.
-  5. A blank key block C instead of B, the main block asks "Set it up?":
+  5. A locked (asleep) again, the main block presses Unlock itself (as on
+     hardware): A shows its PIN entry, not the logo, until it is unlocked.
+  6. A blank key block C alone with the main block, which asks "Set it up?":
      C shows "Main block asks: Set up this block?".
 
 The key block screens are saved as PNG files (--shots DIR).
@@ -121,9 +123,12 @@ def main():
     try:
         print("1. Main block + A (PIN) + B: the 3-of-3 is saved")
         # A's PIN on its own buttons, twice (two unlocks in this test)
-        os.environ["PHYLAX_EMU_PIN_KEYS"] = GOOD + GOOD
+        os.environ["PHYLAX_EMU_PIN_KEYS"] = GOOD * 3
+        # slow presses (14 per PIN): the PIN screen can be looked at
+        os.environ["PHYLAX_EMU_KEY_MS"] = str(PIN_KEY_MS)
         key_a.start()
         os.environ.pop("PHYLAX_EMU_PIN_KEYS")
+        os.environ.pop("PHYLAX_EMU_KEY_MS")
         load_device(key_a.ctx.get_session(passphrase=None), mnemonic=s.KEY_SEED, pin=KEY_PIN,
                     passphrase_protection=False, label="Key block A")
         key_b.start()
@@ -152,6 +157,14 @@ def main():
         a = next(b for b in s.get_blocks(main_blk.session) if b.fingerprint == KEY_FP)
         ret = main_blk.session.call_raw(pm.PhylaxUnlockBlock(address=a.address))
         check(isinstance(ret, messages.Success), "unlock started", f"answer: {ret}")
+        # Found on hardware: the request's end redrew A's home screen (logo) over
+        # its PIN entry. While the PIN is being typed, A shows the PIN screen.
+        time.sleep(1.5)
+        entering = screen(key_a)
+        if shots:
+            save_png(entering, shots / "key-a-pin-entry.png")
+        check(entering not in (home_a, asked), "A shows its PIN entry while it is typed",
+              "A shows the logo (or the request) instead of its PIN entry")
         wait_key(main_blk.session, lambda k: not k.locked and k.fingerprint == KEY_FP,
                  "A, unlocked", timeout=60)
         wait_screen(key_a, lambda shot: shot == home_a, "A's home screen", timeout=10)
@@ -172,8 +185,28 @@ def main():
         check(took < 8, f"the request went after {took:.1f} s", f"took {took:.1f} s")
         check(after == home_a, "A shows its home screen", "A shows something else")
 
-        print("5. A blank key block C: the main block asks to set it up")
+        print("5. A locked (asleep), Unlock pressed on the main block: A shows its PIN entry")
+        # auto-confirm presses "Unlock" on the main block itself, as the owner did
+        main_blk = start_main(autoconfirm=True)
+        started = time.time()
+        wait_key(main_blk.session, lambda k: k.locked and k.fingerprint == KEY_FP, "A, locked")
+        entering = wait_screen(key_a, lambda shot: shot not in (home_a, asked),
+                               "A's PIN entry", timeout=20)
+        time.sleep(2)  # past the main block's next poll and repeat
+        entering = screen(key_a)
+        if shots:
+            save_png(entering, shots / "key-a-pin-entry-from-main.png")
+        check(entering not in (home_a, asked) and any(entering),
+              "A shows its PIN entry, not the logo", "A shows the logo instead of its PIN entry")
+        wait_key(main_blk.session, lambda k: not k.locked and k.fingerprint == KEY_FP,
+                 "A, unlocked", timeout=90)
+        check(True, f"A unlocked ({time.time() - started:.0f} s)", "")
+        main_blk.stop()
+
+        print("6. A blank key block C: the main block asks to set it up")
+        # C alone with the main block: a locked A would be asked about first
         key_b.stop()
+        key_a.stop()
         key_c = s.Block("Key block C", None, PORT_B, "key", elf, workdir,
                         args.headless, autoconfirm=True, node=3)
         blocks.append(key_c)
@@ -181,7 +214,12 @@ def main():
         time.sleep(2)
         home_c = screen(key_c)
         main_blk = start_main(autoconfirm=False)
-        wait_screen(key_c, lambda shot: shot != home_c, "C to show the request", timeout=30)
+        try:
+            wait_screen(key_c, lambda shot: shot != home_c, "C to show the request", timeout=30)
+        finally:
+            if shots:
+                save_png(screen(main_blk), shots / "main-step5.png")
+                save_png(screen(key_c), shots / "key-c-step5.png")
         time.sleep(1)
         setup = screen(key_c)
         if shots:
@@ -201,6 +239,8 @@ def main():
 
 # longer than the main block's repeat (2 s): the request stays on screen
 PHYLAX_REPEAT_CHECK_S = 5
+# ms between the scripted PIN presses on A
+PIN_KEY_MS = 4000
 
 if __name__ == "__main__":
     main()

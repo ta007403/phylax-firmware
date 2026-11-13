@@ -258,7 +258,11 @@ block.", so it can be found in the stack. The main block sends
 is up and `ATTENTION(0)` when it goes; without a repeat for 6 s (main block
 unplugged) the key block shows its home screen again. Only the home screen
 (or the screensaver) is replaced: the PIN entry of an unlock, or a PC
-request, stays. Older key firmware ignores the message (`phylax_attention.c`).
+request, stays. On Unlock / Set up the main block sends `ATTENTION(0)` before
+it starts, and the key block never redraws during the main block's
+conversation (`LOCAL_UI`): its PIN entry does not count as a screen of its
+own, so the home screen used to be drawn over it. Older key firmware ignores
+the message (`phylax_attention.c`).
 
 ### Screens
 

@@ -448,6 +448,9 @@ static void start_unlock(void) {
     return;
   }
 
+  // The request off the key block's screen first: its PIN or setup screen
+  // comes next (phylax_attention.h).
+  phylax_attention_target(PHYLAX_ADDR_NONE, PHYLAX_ATTENTION_OFF);
   uint8_t on = 1;
   phylax_bus_send(target_addr, PHYLAX_MSG_LOCAL_UI, &on, 1);
   phylax_bus_set_trezor_peer(target_addr, on_unlock_message);
@@ -485,6 +488,9 @@ static void start_setup(void) {
     return;
   }
 
+  // The request off the key block's screen first: its PIN or setup screen
+  // comes next (phylax_attention.h).
+  phylax_attention_target(PHYLAX_ADDR_NONE, PHYLAX_ATTENTION_OFF);
   uint8_t on = 1;
   phylax_bus_send(target_addr, PHYLAX_MSG_LOCAL_UI, &on, 1);
   phylax_bus_set_trezor_peer(target_addr, on_key_message);
