@@ -105,7 +105,9 @@ older. Then it compares the wallets with the seed fingerprints present:
   fingerprints; on **Create** (right button) it fetches the key blocks'
   xpubs over the bus and saves the wallet on every block; **No** then asks
   "Ask again later?": **Later** is remembered until the blocks change,
-  **Never** in the main block's own flash (see below)
+  **Never** in the main block's own flash (see below). No new wallet is offered while
+  a key block in the stack is locked (also one put off with "Later"): the
+  blocks without it are not the combination the user put together
 - a saved wallet is missing one block: "Attach key block 777dfe5d to use
   wallet *3-of-3 #1*"
 
@@ -300,6 +302,7 @@ uv run --with embit python ../phylax/tests/test_singlesig.py   # a single-sig sp
 uv run --with embit python ../phylax/tests/test_set_pin_locked.py # set a PIN on a block without one after it auto-locked
 uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3 key blocks), and a 4th key block refused
 uv run --with embit python ../phylax/tests/test_never.py      # "Never" kept across restarts, forgotten from the PC, delete = Never
+uv run --with embit python ../phylax/tests/test_locked_offer.py # no new wallet offered while a key block is locked
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device

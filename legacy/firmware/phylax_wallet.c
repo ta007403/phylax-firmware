@@ -208,6 +208,19 @@ static int present_fps(uint32_t fps[PHYLAX_STACK_MAX + 1],
   return n;
 }
 
+// A key block with a seed in the stack that is locked (PIN not entered).
+static bool has_locked_key_block(void) {
+  const PhylaxStackEntry *e;
+  for (size_t i = 0; (e = phylax_stack_get(i)) != NULL; i++) {
+    if (e->hello.kind == PHYLAX_KIND_KEY &&
+        (e->hello.flags & PHYLAX_HELLO_INITIALIZED) &&
+        (e->hello.flags & PHYLAX_HELLO_LOCKED)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool fp_in(uint32_t fp, const uint32_t *set, int n) {
   for (int i = 0; i < n; i++) {
     if (set[i] == fp) return true;
@@ -1001,8 +1014,12 @@ static void check_stack(void) {
   // the same blocks back asks again.
   if (!was_declined) declined_n = 0;
   bool may_try = !retry_pause || (int32_t)(timer_ms() - retry_after_ms) >= 0;
+  // A locked key block does not count as present, but it is in the stack:
+  // the blocks without it are not what the user put together (hardware: a
+  // 3-of-3 offered while the 4th block was still locked). No new wallet
+  // until every key block is unlocked, or the locked one is removed.
   if (n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
-      free_slot() >= 0 && may_try && settled) {
+      free_slot() >= 0 && may_try && settled && !has_locked_key_block()) {
     if (is_ignored(fps, n)) {
       // "Never": kept like a "no" for as long as these blocks stay together
       // (the flash is read once per combination).
