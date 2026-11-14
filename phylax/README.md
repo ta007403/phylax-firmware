@@ -12,7 +12,7 @@ real savings on it.**
 | Role | Emulator | What it does |
 | --- | --- | --- |
 | stock | (default) | Plain Trezor One behaviour, bus unused |
-| main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to each key block in turn (pass 1), then signs itself, placing each key block's signature in the slot whose key verifies it (pass 2) |
+| main | `PHYLAX_ROLE=main` | USB to the PC; finds the other blocks (discovery); relays SignTx to each key block of the saved wallet being spent in turn (pass 1; the wallet whose keys are input 0's cosigners; every set-up key block if none matches), then signs itself, placing each key block's signature in the slot whose key verifies it (pass 2) |
 | key | `PHYLAX_ROLE=key` | Answers discovery with its id and seed fingerprint; answers Trezor messages that arrive over the bus; keeps a copy of every saved wallet |
 
 On real hardware the role is chosen at build time (`PHYLAX_BUILD_ROLE=main`
@@ -321,6 +321,7 @@ uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3
 uv run --with embit python ../phylax/tests/test_never.py      # "Never" kept across restarts, forgotten from the PC, delete = Never
 uv run --with embit python ../phylax/tests/test_locked_offer.py # no new wallet offered while a key block is locked
 uv run --with embit python ../phylax/tests/test_attention.py  # the key block asked about shows "Unlock this block?" (--shots DIR: PNGs)
+uv run --with embit python ../phylax/tests/test_relay_wallet.py # signing asks only the spent wallet's key blocks (a locked other one is not asked)
 ```
 
 The emulator is built with `LOCAL_CONFIDENTIAL` static, as on the device

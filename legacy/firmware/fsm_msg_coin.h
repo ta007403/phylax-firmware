@@ -289,7 +289,7 @@ void fsm_msgTxAck(TxAck *msg) {
       layoutHome();
       return;
     }
-    if (!phylax_relay_begin(&phylax_signtx)) {
+    if (!phylax_relay_begin(&phylax_signtx, &msg->tx.inputs[0])) {
       fsm_sendFailure(FailureType_Failure_ProcessError,
                       _("No key block attached"));
       layoutHome();

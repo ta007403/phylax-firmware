@@ -9,6 +9,7 @@
  */
 
 #include "phylax_relay.h"
+#include "phylax_wallet.h"
 
 #include <string.h>
 
@@ -137,16 +138,76 @@ int phylax_relay_key_block_count(void) {
   return count;
 }
 
-bool phylax_relay_begin(const SignTx *msg) {
+// One cosigner of the input: the account key (public key and chain code) of
+// one of its keys, in either form of MultisigRedeemScriptType.
+static bool is_cosigner(const MultisigRedeemScriptType *ms,
+                        const PhylaxXpub *xpub) {
+  for (pb_size_t j = 0; j < ms->pubkeys_count; j++) {
+    const HDNodeType *node = &ms->pubkeys[j].node;
+    if (node->public_key.size == 33 &&
+        memcmp(node->public_key.bytes, xpub->public_key, 33) == 0 &&
+        memcmp(node->chain_code.bytes, xpub->chain_code, 32) == 0) {
+      return true;
+    }
+  }
+  for (pb_size_t j = 0; j < ms->nodes_count; j++) {
+    const HDNodeType *node = &ms->nodes[j];
+    if (node->public_key.size == 33 &&
+        memcmp(node->public_key.bytes, xpub->public_key, 33) == 0 &&
+        memcmp(node->chain_code.bytes, xpub->chain_code, 32) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The saved wallet the multisig input belongs to: every one of its keys is a
+// cosigner of the input (on mainnet or testnet), and it has as many keys.
+static const PhylaxWalletRec *wallet_of_input(const TxInputType *input) {
+  if (!input->has_multisig) return NULL;
+  const MultisigRedeemScriptType *ms = &input->multisig;
+  pb_size_t cosigners = ms->pubkeys_count ? ms->pubkeys_count : ms->nodes_count;
+  for (int slot = 0; slot < PHYLAX_WALLET_SLOTS; slot++) {
+    const PhylaxWalletRec *w = phylax_wallet_get(slot, NULL);
+    if (w == NULL || w->n != cosigners) continue;
+    bool mainnet = true;
+    bool testnet = true;
+    for (int k = 0; k < w->n; k++) {
+      if (!is_cosigner(ms, &w->keys[k].mainnet)) mainnet = false;
+      if (!is_cosigner(ms, &w->keys[k].testnet)) testnet = false;
+    }
+    if (mainnet || testnet) return w;
+  }
+  return NULL;
+}
+
+static bool wallet_has_fingerprint(const PhylaxWalletRec *w, uint32_t fp) {
+  for (int k = 0; k < w->n; k++) {
+    if (w->keys[k].fingerprint == fp) return true;
+  }
+  return false;
+}
+
+bool phylax_relay_begin(const SignTx *msg, const TxInputType *input0) {
   phylax_relay_reset();
+  // Found on hardware: every key block was asked, also one of another wallet
+  // that was locked: its PIN request went to the PC. Only the wallet's own
+  // key blocks now (a locked one of them: Suite asks to wake it up first).
+  const PhylaxWalletRec *wallet = wallet_of_input(input0);
   const PhylaxStackEntry *e;
   for (size_t i = 0; target_count < PHYLAX_MAX_KEY_BLOCKS &&
                      (e = phylax_stack_get(i)) != NULL;
        i++) {
-    if (e->hello.kind == PHYLAX_KIND_KEY &&
-        (e->hello.flags & PHYLAX_HELLO_INITIALIZED)) {
-      targets[target_count++] = e->addr;
+    if (e->hello.kind != PHYLAX_KIND_KEY ||
+        !(e->hello.flags & PHYLAX_HELLO_INITIALIZED)) {
+      continue;
     }
+    if (wallet != NULL &&
+        (!(e->hello.flags & PHYLAX_HELLO_HAS_FP) ||
+         !wallet_has_fingerprint(wallet, e->hello.fingerprint))) {
+      continue;
+    }
+    targets[target_count++] = e->addr;
   }
   if (target_count == 0) return false;
   memcpy(&signtx, msg, sizeof(SignTx));

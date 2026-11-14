@@ -71,7 +71,10 @@ int phylax_relay_key_block_count(void);
 // Called with the host's SignTx once the probe found a multisig input. Starts
 // pass 1 with the first key block. Returns false if there is no key block
 // (then the caller reports the failure).
-bool phylax_relay_begin(const SignTx *msg);
+// `input0`: the transaction's first input (multisig). Only the key blocks of
+// the saved wallet it belongs to are asked; for a multisig no saved wallet
+// matches, every set-up key block (each one declines if it is not a cosigner).
+bool phylax_relay_begin(const SignTx *msg, const TxInputType *input0);
 
 // Called by fsm_msgTxAck. Returns true if the TxAck was forwarded to a key
 // block (pass 1) and must not be processed locally.
