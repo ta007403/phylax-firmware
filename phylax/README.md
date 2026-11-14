@@ -321,6 +321,7 @@ uv run --with embit python ../phylax/tests/test_4of4.py       # 4-of-4 (main + 3
 uv run --with embit python ../phylax/tests/test_never.py      # "Never" kept across restarts, forgotten from the PC, delete = Never
 uv run --with embit python ../phylax/tests/test_locked_offer.py # no new wallet offered while a key block is locked
 uv run --with embit python ../phylax/tests/test_attention.py  # the key block asked about shows "Unlock this block?" (--shots DIR: PNGs)
+uv run --with embit python ../phylax/tests/test_main_locked.py   # no wallet offered while the main block is locked (never one without the main block)
 uv run --with embit python ../phylax/tests/test_relay_wallet.py # signing asks only the spent wallet's key blocks (a locked other one is not asked)
 ```
 

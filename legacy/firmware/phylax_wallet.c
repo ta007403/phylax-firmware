@@ -1021,7 +1021,14 @@ static void check_stack(void) {
   // the blocks without it are not what the user put together (hardware: a
   // 3-of-3 offered while the 4th block was still locked). No new wallet
   // until every key block is unlocked, or the locked one is removed.
-  if (n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
+  // Every wallet has the main block's key: a locked main block does not count
+  // as present, so it offers nothing until its PIN is entered (hardware: a
+  // 3-of-3 of the key blocks alone was saved before the main block's PIN).
+  bool main_present = false;
+  for (int i = 0; i < n; i++) {
+    if (addrs[i] == 0) main_present = true;
+  }
+  if (main_present && n >= 2 && n <= PHYLAX_WALLET_MAX_KEYS && !was_declined &&
       free_slot() >= 0 && may_try && settled && !has_locked_key_block()) {
     if (is_ignored(fps, n)) {
       // "Never": kept like a "no" for as long as these blocks stay together
